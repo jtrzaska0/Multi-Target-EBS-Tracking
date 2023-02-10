@@ -1,10 +1,13 @@
 #include <fstream>
 #include <semaphore>
 
+
 #include <libcaercpp/devices/dvxplorer.hpp>
 
 #include <atomic>
 #include <csignal>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 #include "ebs-tracking/Algorithm.hpp"
 #include "ebs-tracking/reader.hpp"
@@ -155,6 +158,9 @@ int setup_xplorer() {
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
+    cv::namedWindow("PLOT_EVENTS",
+                    cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
+
     while (!globalShutdown.load(std::memory_order_relaxed)) {
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
         if (packetContainer == nullptr) {
@@ -185,10 +191,27 @@ int setup_xplorer() {
                 bool pol = firstEvent.getPolarity();
 
                 printf("First polarity event - ts: %d, x: %d, y: %d, pol: %d.\n", ts, x, y, pol);
+
+                cv::Mat cvEvents(480, 640, CV_8UC3, cv::Vec3b{127, 127, 127});
+                for (const auto &e : *polarity) {
+                    cvEvents.at<cv::Vec3b>(e.getY(), e.getX())
+                            = e.getPolarity() ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
+                }
+
+                cv::imshow("PLOT_EVENTS", cvEvents);
+                cv::waitKey(1);
             }
         }
     }
-    return 0;
+    handle.dataStop();
+
+    // Close automatically done by destructor.
+
+    cv::destroyWindow("PLOT_EVENTS");
+
+    printf("Shutdown successful.\n");
+
+    return (EXIT_SUCCESS);
 }
 
 int main(int argc, char* argv[]) {
