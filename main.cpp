@@ -209,7 +209,7 @@ std::tuple<int16_t, int16_t, libcaer::devices::davis> init_davis() {
     coarseFineBias.typeNormal         = true;
     coarseFineBias.currentLevelNormal = true;
 
-    davisHandle.configSet(DAVIS_CONFIG_BIAS, DAVIS240_CONFIG_BIAS_PRBP, caerBiasCoarseFineGenerate(coarseFineBias));
+    davisHandle.configSet(DAVIS_CONFIG_BIAS, DAVIS346_CONFIG_BIAS_PRBP, caerBiasCoarseFineGenerate(coarseFineBias));
 
     coarseFineBias.coarseValue        = 1;
     coarseFineBias.fineValue          = 33;
@@ -218,11 +218,11 @@ std::tuple<int16_t, int16_t, libcaer::devices::davis> init_davis() {
     coarseFineBias.typeNormal         = true;
     coarseFineBias.currentLevelNormal = true;
 
-    davisHandle.configSet(DAVIS_CONFIG_BIAS, DAVIS240_CONFIG_BIAS_PRSFBP, caerBiasCoarseFineGenerate(coarseFineBias));
+    davisHandle.configSet(DAVIS_CONFIG_BIAS, DAVIS346_CONFIG_BIAS_PRSFBP, caerBiasCoarseFineGenerate(coarseFineBias));
 
     // Let's verify they really changed!
-    uint32_t prBias   = davisHandle.configGet(DAVIS_CONFIG_BIAS, DAVIS240_CONFIG_BIAS_PRBP);
-    uint32_t prsfBias = davisHandle.configGet(DAVIS_CONFIG_BIAS, DAVIS240_CONFIG_BIAS_PRSFBP);
+    uint32_t prBias   = davisHandle.configGet(DAVIS_CONFIG_BIAS, DAVIS346_CONFIG_BIAS_PRBP);
+    uint32_t prsfBias = davisHandle.configGet(DAVIS_CONFIG_BIAS, DAVIS346_CONFIG_BIAS_PRSFBP);
 
     printf("New bias values --- PR-coarse: %d, PR-fine: %d, PRSF-coarse: %d, PRSF-fine: %d.\n",
            caerBiasCoarseFineParse(prBias).coarseValue, caerBiasCoarseFineParse(prBias).fineValue,
@@ -430,7 +430,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    std::string device_tpye = {std::string(argv[1])};
+    std::string device_type = {std::string(argv[1])};
     double integrationtime = {std::stod(argv[2])};
     double mag = {std::stod(argv[3])};
 
@@ -466,7 +466,7 @@ int main(int argc, char* argv[]) {
 
     bool active = true;
 
-    if (device_tpye == "xplorer") {
+    if (device_type == "xplorer") {
         auto params = init_xplorer();
         int Nx = std::get<0>(params);
         int Ny = std::get<1>(params);
