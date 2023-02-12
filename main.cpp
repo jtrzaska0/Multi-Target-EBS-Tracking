@@ -20,7 +20,7 @@
 
 static std::atomic_bool globalShutdown(false);
 
-std::queue<std::shared_ptr<const libcaer::events::PolarityEventPacket>> PlottingPacketQueue;
+std::queue<std::shared_ptr<libcaer::events::PolarityEventPacket>> PlottingPacketQueue;
 std::queue<std::vector<double>> TrackingVectorQueue;
 std::queue<cv::Mat> CVMatrixQueue;
 std::queue<std::vector<double>> PositionsVectorQueue;
@@ -46,48 +46,52 @@ void tracker (double dt, DBSCAN_KNN T, bool&active) {
         while (!TrackingVectorQueue.empty() && active) {
             auto events = TrackingVectorQueue.front();
             std::vector<double> positions;
-            // The detector takes a pointer to events.
-            double *mem{events.data()};
-
-            // Starting time.
-            double t0{events[0]};
-
-            // Keep sizes of the vectors in variables.
-            int nEvents{(int) events.size() / 4};
-
             try {
-                while (true) {
-                    // Read all events in one integration time.
-                    double t1{t0 + dt};
-                    int N{0};
-                    for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
-                        if (mem[4 * N] >= t1)
+                if (!events.empty()) {
+                    // The detector takes a pointer to events.
+                    double *mem{events.data()};
+                    // Starting time.
+                    double t0{events[0]};
+
+                    // Keep sizes of the vectors in variables.
+                    int nEvents{(int) events.size() / 4};
+                    while (true) {
+                        // Read all events in one integration time.
+                        double t1{t0 + dt};
+                        int N{0};
+                        for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
+                            if (mem[4 * N] >= t1)
+                                break;
+                        // Advance starting time.
+                        t0 = t1;
+
+                        // Feed events to the detector/tracker.
+                        T(mem, N);
+                        Eigen::MatrixXd targets{T.currentTracks()};
+
+                        for (int i{0}; i < targets.rows(); ++i) {
+                            positions.push_back(targets(i, 0));
+                            positions.push_back(targets(i, 1));
+                        }
+
+                        // Break once all events have been used.
+                        if (t0 > events[4 * (nEvents - 1)])
                             break;
 
-                    // Advance starting time.
-                    t0 = t1;
+                        // Evolve tracks in time.
+                        T.predict();
 
-                    // Feed events to the detector/tracker.
-                    T(mem, N);
-                    Eigen::MatrixXd targets {T.currentTracks()};
-
-                    for (int i{0}; i < targets.rows(); ++i) {
-                        positions.push_back(targets(i, 0));
-                        positions.push_back(targets(i, 1));
+                        // Update eventIdx
+                        mem += 4 * N;
                     }
-
-                    // Break once all events have been used.
-                    if (t0 > events[4 * (nEvents - 1)])
-                        break;
-
-                    // Evolve tracks in time.
-                    T.predict();
-
-                    // Update eventIdx
-                    mem += 4 * N;
+                    PositionsVectorQueue.push(positions);
+                    TrackingVectorQueue.pop();
+                } else {
+                    positions.push_back(-10);
+                    positions.push_back(-10);
+                    PositionsVectorQueue.push(positions);
+                    TrackingVectorQueue.pop();
                 }
-                PositionsVectorQueue.push(positions);
-                TrackingVectorQueue.pop();
             }
             catch(...) {
                 positions.push_back(-10);
@@ -167,113 +171,6 @@ void read_packets(int Nx, int Ny, bool& active) {
     }
 }
 
-std::tuple<int16_t, int16_t, libcaer::devices::davis, libcaer::filters::DVSNoise> init_davis() {
-    // Install signal handler for global shutdown.
-#if defined(_WIN32)
-    if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGTERM. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-
-	if (signal(SIGINT, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGINT. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-#else
-    struct sigaction shutdownAction{};
-
-    shutdownAction.sa_handler = &globalShutdownSignalHandler;
-    shutdownAction.sa_flags   = 0;
-    sigemptyset(&shutdownAction.sa_mask);
-    sigaddset(&shutdownAction.sa_mask, SIGTERM);
-    sigaddset(&shutdownAction.sa_mask, SIGINT);
-
-    if (sigaction(SIGTERM, &shutdownAction, nullptr) == -1) {
-        libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-                          "Failed to set signal handler for SIGTERM. Error: %d.", errno);
-    }
-
-    if (sigaction(SIGINT, &shutdownAction, nullptr) == -1) {
-        libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-                          "Failed to set signal handler for SIGINT. Error: %d.", errno);
-    }
-#endif
-
-    // Open a DAVIS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
-    libcaer::devices::davis davisHandle = libcaer::devices::davis(1);
-
-    // Let's take a look at the information we have on the device.
-    struct caer_davis_info davis_info = davisHandle.infoGet();
-
-    printf("%s --- ID: %d, Master: %d, DVS X: %d, DVS Y: %d, Logic: %d.\n", davis_info.deviceString,
-           davis_info.deviceID, davis_info.deviceIsMaster, davis_info.dvsSizeX, davis_info.dvsSizeY,
-           davis_info.logicVersion);
-
-    // Send the default configuration before using the device.
-    // No configuration is sent automatically!
-    davisHandle.sendDefaultConfig();
-
-    // Tweak some biases, to increase bandwidth in this case.
-    struct caer_bias_coarsefine coarseFineBias{};
-
-    coarseFineBias.coarseValue        = 2;
-    coarseFineBias.fineValue          = 116;
-    coarseFineBias.enabled            = true;
-    coarseFineBias.sexN               = false;
-    coarseFineBias.typeNormal         = true;
-    coarseFineBias.currentLevelNormal = true;
-
-    davisHandle.configSet(DAVIS_CONFIG_BIAS, DAVIS346_CONFIG_BIAS_PRBP, caerBiasCoarseFineGenerate(coarseFineBias));
-
-    coarseFineBias.coarseValue        = 1;
-    coarseFineBias.fineValue          = 33;
-    coarseFineBias.enabled            = true;
-    coarseFineBias.sexN               = false;
-    coarseFineBias.typeNormal         = true;
-    coarseFineBias.currentLevelNormal = true;
-
-    davisHandle.configSet(DAVIS_CONFIG_BIAS, DAVIS346_CONFIG_BIAS_PRSFBP, caerBiasCoarseFineGenerate(coarseFineBias));
-
-    // Let's verify they really changed!
-    uint32_t prBias   = davisHandle.configGet(DAVIS_CONFIG_BIAS, DAVIS346_CONFIG_BIAS_PRBP);
-    uint32_t prsfBias = davisHandle.configGet(DAVIS_CONFIG_BIAS, DAVIS346_CONFIG_BIAS_PRSFBP);
-
-    printf("New bias values --- PR-coarse: %d, PR-fine: %d, PRSF-coarse: %d, PRSF-fine: %d.\n",
-           caerBiasCoarseFineParse(prBias).coarseValue, caerBiasCoarseFineParse(prBias).fineValue,
-           caerBiasCoarseFineParse(prsfBias).coarseValue, caerBiasCoarseFineParse(prsfBias).fineValue);
-
-    // Enable hardware filters if present.
-    if (davis_info.dvsHasBackgroundActivityFilter) {
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME, 8);
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY, true);
-
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD_TIME, 1);
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD, true);
-    }
-
-    // Add full-sized software filter to reduce DVS noise.
-    libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(davis_info.dvsSizeX, davis_info.dvsSizeX);
-
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, 2);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, 8);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, 2000);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, true);
-
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, 200);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, true);
-
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, true);
-
-    std::tuple<int16_t, int16_t, libcaer::devices::davis, libcaer::filters::DVSNoise> ret = {davis_info.dvsSizeX, davis_info.dvsSizeY, davisHandle, dvsNoiseFilter};
-
-    return ret;
-}
-
 std::tuple<int16_t, int16_t, libcaer::devices::dvXplorer> init_xplorer() {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
@@ -347,7 +244,7 @@ int read_xplorer (const libcaer::devices::dvXplorer& handle, bool& active) {
             }
 
             if (packet->getEventType() == POLARITY_EVENT) {
-                std::shared_ptr<const libcaer::events::PolarityEventPacket> polarity
+                std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
                 std::vector<double> events;
@@ -371,23 +268,97 @@ int read_xplorer (const libcaer::devices::dvXplorer& handle, bool& active) {
     return (EXIT_SUCCESS);
 }
 
-int read_davis (const libcaer::devices::davis& handle, const libcaer::filters::DVSNoise& dvsNoiseFilter, bool& active) {
+int read_davis (bool& active) {
+    // Install signal handler for global shutdown.
+#if defined(_WIN32)
+    if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
+		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
+			"Failed to set signal handler for SIGTERM. Error: %d.", errno);
+		return (EXIT_FAILURE);
+	}
+
+	if (signal(SIGINT, &globalShutdownSignalHandler) == SIG_ERR) {
+		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
+			"Failed to set signal handler for SIGINT. Error: %d.", errno);
+		return (EXIT_FAILURE);
+	}
+#else
+    struct sigaction shutdownAction{};
+
+    shutdownAction.sa_handler = &globalShutdownSignalHandler;
+    shutdownAction.sa_flags   = 0;
+    sigemptyset(&shutdownAction.sa_mask);
+    sigaddset(&shutdownAction.sa_mask, SIGTERM);
+    sigaddset(&shutdownAction.sa_mask, SIGINT);
+
+    if (sigaction(SIGTERM, &shutdownAction, nullptr) == -1) {
+        libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
+                          "Failed to set signal handler for SIGTERM. Error: %d.", errno);
+        return (EXIT_FAILURE);
+    }
+
+    if (sigaction(SIGINT, &shutdownAction, nullptr) == -1) {
+        libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
+                          "Failed to set signal handler for SIGINT. Error: %d.", errno);
+        return (EXIT_FAILURE);
+    }
+#endif
+
+    // Open a DAVIS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
+    libcaer::devices::davis davisHandle = libcaer::devices::davis(1);
+
+    // Let's take a look at the information we have on the device.
+    struct caer_davis_info davis_info = davisHandle.infoGet();
+
+    printf("%s --- ID: %d, Master: %d, DVS X: %d, DVS Y: %d, Logic: %d.\n", davis_info.deviceString,
+           davis_info.deviceID, davis_info.deviceIsMaster, davis_info.dvsSizeX, davis_info.dvsSizeY,
+           davis_info.logicVersion);
+
+    // Send the default configuration before using the device.
+    // No configuration is sent automatically!
+    davisHandle.sendDefaultConfig();
+
+    // Enable hardware filters if present.
+    if (davis_info.dvsHasBackgroundActivityFilter) {
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME, 8);
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY, true);
+
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD_TIME, 1);
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD, true);
+    }
+
+    // Add full-sized software filter to reduce DVS noise.
+    libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(davis_info.dvsSizeX, davis_info.dvsSizeX);
+
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, 2);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, 8);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, 2000);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, true);
+
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, 200);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, true);
+
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, true);
+
     // Now let's get start getting some data from the device. We just loop in blocking mode,
     // no notification needed regarding new events. The shutdown notification, for example if
     // the device is disconnected, should be listened to.
-    handle.dataStart(nullptr, nullptr, nullptr, &usbShutdownHandler, nullptr);
+    davisHandle.dataStart(nullptr, nullptr, nullptr, &usbShutdownHandler, nullptr);
 
     // Let's turn on blocking data-get mode to avoid wasting resources.
-    handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
+    davisHandle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
     // Disable APS (frames) and IMU, not used for showing event filtering.
-    handle.configSet(DAVIS_CONFIG_APS, DAVIS_CONFIG_APS_RUN, false);
-    handle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_ACCELEROMETER, false);
-    handle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_GYROSCOPE, false);
-    handle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_TEMPERATURE, false);
+    davisHandle.configSet(DAVIS_CONFIG_APS, DAVIS_CONFIG_APS_RUN, false);
+    davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_ACCELEROMETER, false);
+    davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_GYROSCOPE, false);
+    davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_TEMPERATURE, false);
 
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
-        std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
+        std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
         if (packetContainer == nullptr) {
             continue; // Skip if nothing there.
         }
@@ -399,7 +370,7 @@ int read_davis (const libcaer::devices::davis& handle, const libcaer::filters::D
             }
 
             if (packet->getEventType() == POLARITY_EVENT) {
-                std::shared_ptr<const libcaer::events::PolarityEventPacket> polarity
+                std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
                 dvsNoiseFilter.apply(*polarity);
@@ -422,7 +393,7 @@ int read_davis (const libcaer::devices::davis& handle, const libcaer::filters::D
             }
         }
     }
-    handle.dataStop();
+    davisHandle.dataStop();
 
     // Close automatically done by destructor.
     printf("Shutdown successful.\n");
@@ -533,15 +504,12 @@ int main(int argc, char* argv[]) {
         running_thread.join();
     }
     else {
-        auto params = init_davis();
-        int Nx = std::get<0>(params);
-        int Ny = std::get<1>(params);
-        auto handle = std::get<2>(params);
-        auto filter = std::get<3>(params);
+        int Nx = 346;
+        int Ny = 260;
+        std::thread writing_thread(read_davis, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, std::ref(active));
         std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, std::ref(active));
-        std::thread writing_thread(read_davis, std::ref(handle), std::ref(filter), std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
