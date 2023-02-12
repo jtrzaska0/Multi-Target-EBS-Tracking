@@ -1,21 +1,26 @@
 #include <fstream>
-#include <semaphore>
-
 
 #include <libcaercpp/devices/dvxplorer.hpp>
 
 #include <atomic>
 #include <csignal>
+#include <queue>
+
 #include <opencv2/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include "ebs-tracking/Algorithm.hpp"
-#include "ebs-tracking/reader.hpp"
-#include "ebs-tracking/gifs/gifMaker.hpp"
 
-std::counting_semaphore<1> prepareTracker(0);
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
 
 static std::atomic_bool globalShutdown(false);
+
+std::queue<std::shared_ptr<const libcaer::events::PolarityEventPacket>> PlottingPacketQueue;
+std::queue<std::vector<double>> TrackingVectorQueue;
+std::queue<cv::Mat> CVMatrixQueue;
+std::queue<std::vector<double>> PositionsVectorQueue;
 
 static void globalShutdownSignalHandler(int signal) {
     // Simply set the running flag to false on SIGTERM and SIGINT (CTRL+C) for global shutdown.
@@ -33,75 +38,118 @@ static void usbShutdownHandler(void *ptr) {
 // Read csv and process in "real time"
 // dt: integration time in ms
 // delay: time behind actual in ms
-void tracker (std::string eData, double dt, DBSCAN_KNN T, Eigen::MatrixXd&targets, int&slice, int&delay, bool&active) {
-    printf("Initializing tracker...\n");
-    // Process tracking data.
-    EventData eventdata;
-    eventdata.readEventsNoGndTruth(eData);
-    auto [events, gt] = eventdata[0];
+void tracker (double dt, DBSCAN_KNN T, bool&active) {
+    Eigen::MatrixXd targets {};
+    while (active) {
+        while (!TrackingVectorQueue.empty() && active) {
+            auto events = TrackingVectorQueue.front();
+            std::vector<double> positions;
+            // The detector takes a pointer to events.
+            double *mem{events.data()};
 
-    // The detector takes a pointer to events.
-    double * mem {events.data()};
+            // Starting time.
+            double t0{events[0]};
 
-    // Starting time.
-    double t0 {events[0]};
+            // Keep sizes of the vectors in variables.
+            int nEvents{(int) events.size() / 4};
 
-    // Keep sizes of the vectors in variables.
-    int nEvents {(int) events.size() / 4};
+            while (true) {
+                // Read all events in one integration time.
+                double t1{t0 + dt};
+                int N{0};
+                for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
+                    if (mem[4 * N] >= t1)
+                        break;
 
-    printf("Tracker prepared.\n");
-    prepareTracker.release();
+                // Advance starting time.
+                t0 = t1;
 
-    printf("Starting tracker...\n");
-    while (true) {
-        auto start {std::chrono::high_resolution_clock::now()};
-        // Read all events in one integration time.
-        double t1 {t0 + dt};
-        int N {0};
-        for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
-            if (mem[4 * N] >= t1)
-                break;
+                // Feed events to the detector/tracker.
+                T(mem, N);
+                targets = T.currentTracks();
 
-        // Advance starting time.
-        t0 = t1;
+                for (int i {0}; i < targets.rows(); ++i) {
+                    positions.push_back(targets(i, 0));
+                    positions.push_back(targets(i, 1));
+                }
 
-        // Feed events to the detector/tracker.
-        T(mem, N);
-        targets = T.currentTracks();
+                // Break once all events have been used.
+                if (t0 > events[4 * (nEvents - 1)])
+                    break;
 
-        // Break once all events have been used.
-        if (t0 > events[4 * (nEvents - 1)])
-            break;
+                // Evolve tracks in time.
+                T.predict();
 
-        // Evolve tracks in time.
-        T.predict();
-
-        // Update eventIdx
-        mem += 4*N;
-        slice += 1;
-
-        auto end {std::chrono::high_resolution_clock::now()};
-        auto duration = duration_cast<std::chrono::microseconds>(end - start);
-        if ((double)duration.count() > dt*1000){
-            delay += (int)duration.count() - (int)dt*1000;
-        }
-        else {
-            int wait = (int)dt*1000 - (int)duration.count();
-            if (delay < wait) {
-                std::this_thread::sleep_for(std::chrono::microseconds(wait-delay));
-                delay = 0;
+                // Update eventIdx
+                mem += 4 * N;
             }
-            else {
-                delay -= wait;
-            }
+            PositionsVectorQueue.push(positions);
+            TrackingVectorQueue.pop();
         }
     }
-
-    active = false;
-    printf("Reached end of file. Total delay (ms): %d\n", delay);
 }
 
-int setup_xplorer() {
+void plot_events(double dt, double mag, int Nx, int Ny, bool& active) {
+    int y_increment = (int)(mag * Ny / 2);
+    int x_increment = (int)(y_increment * Nx / Ny);
+
+    cv::namedWindow("PLOT_EVENTS",
+                   cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
+    while (active) {
+        while (CVMatrixQueue.empty() && active) {
+            // Do nothing until there is a matrix to process
+        }
+        while (PositionsVectorQueue.empty() && active) {
+            // Do nothing until there is a corresponding positions vector
+        }
+        auto cvmat = CVMatrixQueue.front();
+        auto positions = PositionsVectorQueue.front();
+
+
+        for (int i=0; i < positions.size(); i += 2) {
+            int x = (int)positions[i];
+            int y = (int)positions[i+1];
+
+            int y_min = std::max(y - y_increment, 0);
+            int x_min = std::max(x - x_increment, 0);
+            int y_max = std::min(y + y_increment, Ny - 1);
+            int x_max = std::min(x + x_increment, Nx - 1);
+
+            cv::Point p1(x_min, y_min);
+            cv::Point p2(x_max, y_max);
+            int thickness = 2;
+            rectangle(cvmat, p1, p2,
+                      cv::Scalar(255, 0, 0),
+                      thickness, cv::LINE_8);
+
+
+        }
+        cv::imshow("PLOT_EVENTS", cvmat);
+        cv::waitKey((int)dt);
+
+        CVMatrixQueue.pop();
+        PositionsVectorQueue.pop();
+    }
+    cv::destroyWindow("PLOT_EVENTS");
+}
+
+void read_packets(bool& active) {
+    while (active) {
+        while (!PlottingPacketQueue.empty() && active) {
+            auto polarity = PlottingPacketQueue.front();
+            cv::Mat cvEvents(480, 640, CV_8UC3, cv::Vec3b{127, 127, 127});
+            for (const auto &e : *polarity) {
+                cvEvents.at<cv::Vec3b>(e.getY(), e.getX())
+                    = e.getPolarity() ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
+            }
+
+            CVMatrixQueue.push(cvEvents);
+            PlottingPacketQueue.pop();
+        }
+    }
+}
+
+int init_xplorer(bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -116,7 +164,7 @@ int setup_xplorer() {
 		return (EXIT_FAILURE);
 	}
 #else
-    struct sigaction shutdownAction;
+    struct sigaction shutdownAction{};
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
     shutdownAction.sa_flags   = 0;
@@ -124,13 +172,13 @@ int setup_xplorer() {
     sigaddset(&shutdownAction.sa_mask, SIGTERM);
     sigaddset(&shutdownAction.sa_mask, SIGINT);
 
-    if (sigaction(SIGTERM, &shutdownAction, NULL) == -1) {
+    if (sigaction(SIGTERM, &shutdownAction, nullptr) == -1) {
         libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
                           "Failed to set signal handler for SIGTERM. Error: %d.", errno);
         return (EXIT_FAILURE);
     }
 
-    if (sigaction(SIGINT, &shutdownAction, NULL) == -1) {
+    if (sigaction(SIGINT, &shutdownAction, nullptr) == -1) {
         libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
                           "Failed to set signal handler for SIGINT. Error: %d.", errno);
         return (EXIT_FAILURE);
@@ -158,60 +206,51 @@ int setup_xplorer() {
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
-    cv::namedWindow("PLOT_EVENTS",
-                    cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
-
-    while (!globalShutdown.load(std::memory_order_relaxed)) {
+    while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
         if (packetContainer == nullptr) {
             continue; // Skip if nothing there.
         }
 
-        printf("\nGot event container with %d packets (allocated).\n", packetContainer->size());
-
         for (auto &packet: *packetContainer) {
             if (packet == nullptr) {
-                printf("Packet is empty (not present).\n");
+                //printf("Packet is empty (not present).\n");
                 continue; // Skip if nothing there.
             }
-
-            printf("Packet of type %d -> %d events, %d capacity.\n", packet->getEventType(), packet->getEventNumber(),
-                   packet->getEventCapacity());
 
             if (packet->getEventType() == POLARITY_EVENT) {
                 std::shared_ptr<const libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
-                // Get full timestamp and addresses of first event.
-                const libcaer::events::PolarityEvent &firstEvent = (*polarity)[0];
+                std::vector<double> events;
+                PlottingPacketQueue.push(polarity);
 
-                int32_t ts = firstEvent.getTimestamp();
-                uint16_t x = firstEvent.getX();
-                uint16_t y = firstEvent.getY();
-                bool pol = firstEvent.getPolarity();
-
-                printf("First polarity event - ts: %d, x: %d, y: %d, pol: %d.\n", ts, x, y, pol);
-
-                cv::Mat cvEvents(480, 640, CV_8UC3, cv::Vec3b{127, 127, 127});
                 for (const auto &e : *polarity) {
-                    cvEvents.at<cv::Vec3b>(e.getY(), e.getX())
-                            = e.getPolarity() ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
+                    events.push_back((double)e.getTimestamp()/1000);
+                    events.push_back(e.getX());
+                    events.push_back(e.getY());
+                    events.push_back(e.getPolarity());
                 }
-
-                cv::imshow("PLOT_EVENTS", cvEvents);
-                cv::waitKey(1);
+                TrackingVectorQueue.push(events);
             }
         }
     }
     handle.dataStop();
 
     // Close automatically done by destructor.
-
-    cv::destroyWindow("PLOT_EVENTS");
-
     printf("Shutdown successful.\n");
 
     return (EXIT_SUCCESS);
+}
+
+bool key_is_pressed(KeySym ks) {
+    Display *dpy = XOpenDisplay(":0");
+    char keys_return[32];
+    XQueryKeymap(dpy, keys_return);
+    KeyCode kc2 = XKeysymToKeycode(dpy, ks);
+    bool isPressed = !!(keys_return[kc2 >> 3] & (1 << (kc2 & 7)));
+    XCloseDisplay(dpy);
+    return isPressed;
 }
 
 int main(int argc, char* argv[]) {
@@ -220,36 +259,25 @@ int main(int argc, char* argv[]) {
      A separate Matlab script can be used to generate GIFs of the result.
 
      Args:
-          argv[1]: File containing the event data.
-          argv[2]: Integration time in milliseconds.
-          argv[3]: Camera loop time in milliseconds. If 0, semaphores are used to capture each event.
-          argv[4]: Path for events file.
-          argv[5]: Path for locations file.
+          argv[1]: Integration time in milliseconds.
+          argv[2]: Magnification
+          argv[3]: Number of horizontal pixels
+          argv[4]: Number of vertical pixels
 
      Ret:
           0
      */
 
-    setup_xplorer();
-
-    if (argc != 6) {
+    if (argc != 5) {
         printf("Invalid number of arguments.\n");
         return 0;
     }
 
-    // Path to event data
-    std::string eData {argv[1]};
     // Integration time in ms
-    double integrationtime = {std::stod(argv[2])};
-    // Loop time in ms
-    double looptime = {std::stod(argv[3])};
-
-
-    // Path for events file
-    std::string efname {argv[4]};
-    // Path for locations file
-    std::string tfname {argv[5]};
-
+    double integrationtime = {std::stod(argv[1])};
+    double mag = {std::stod(argv[2])};
+    int Nx = {std::stoi(argv[3])};
+    int Ny = {std::stoi(argv[4])};
 
     /**Create an Algorithm object here.**/
     // Matrix initializer
@@ -280,56 +308,35 @@ int main(int argc, char* argv[]) {
     // Algo initializer
     DBSCAN_KNN algo(invals, k_model);
 
-    // Write the events to a file before the simulation
-    GifMaker gm(eData, integrationtime);
-    gm.run(efname);
+    bool active = true;
+    std::thread writing_thread(init_xplorer, std::ref(active));
+    std::thread plotting_thread(read_packets, std::ref(active));
+    std::thread tracking_thread(tracker, integrationtime, algo, std::ref(active));
+    std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, std::ref(active));
 
-    // Open a file for the tracking data
-    std::ofstream tFile {tfname};
-
-    bool active = false;
-    int slice = 1;
-    int delay = 0;
-    Eigen::MatrixXd targets {};
-    std::thread tracking_thread(tracker, eData, integrationtime, algo, std::ref(targets), std::ref(slice), std::ref(delay), std::ref(active));
-    prepareTracker.acquire();
-    active = true;
-    int fixedslice;
-
-    printf("Starting reading loop...\n");
-    while (active) {
-        auto start {std::chrono::high_resolution_clock::now()};
-
-        fixedslice = slice;
-        // Store the objects as their own file.
-        if (targets.rows() == 0)
-            tFile << -10 << " " << -10 << " " << fixedslice << "\n";
-        else {
-            for (int i {0}; i < targets.rows(); ++i) {
-                tFile << targets(i, 0)
-                      << " "
-                      << targets(i, 1)
-                      << " "
-                      << fixedslice
-                      << "\n";
-            }
+    printf("Press space to stop...\n");
+    int i = 0;
+    while(active) {
+        if (key_is_pressed(XK_space)) {
+            active = false;
         }
-
-        tFile << "\n\n";
-
-        auto end {std::chrono::high_resolution_clock::now()};
-        auto duration = duration_cast<std::chrono::milliseconds>(end - start);
-        int wait = (int)looptime - (int)duration.count();
-        if (wait > 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(wait));
+        if (i > 20) {
+            i = 0;
+            printf("Queue Sizes:\n");
+            printf("------------\n");
+            printf("Plotting Queue: %zu\n", PlottingPacketQueue.size());
+            printf("Event Vector Queue: %zu\n", TrackingVectorQueue.size());
+            printf("Image Matrix Queue: %zu\n", CVMatrixQueue.size());
+            printf("Position Vector Queue: %zu\n\n\n", PositionsVectorQueue.size());
         }
-        else {
-            printf("WARNING: Camera loop exceeded expected time.\n");
-        }
+        i += 1;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
+    writing_thread.join();
+    plotting_thread.join();
     tracking_thread.join();
-    printf("Slices: %hd\n", slice);
+    image_thread.join();
 
     return 0;
 }
