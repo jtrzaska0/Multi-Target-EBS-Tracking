@@ -41,7 +41,6 @@ static void usbShutdownHandler(void *ptr) {
 // dt: integration time in ms
 // delay: time behind actual in ms
 void tracker (double dt, DBSCAN_KNN T, bool&active) {
-    Eigen::MatrixXd targets {};
     while (active) {
         while (!TrackingVectorQueue.empty() && active) {
             auto events = TrackingVectorQueue.front();
@@ -55,38 +54,46 @@ void tracker (double dt, DBSCAN_KNN T, bool&active) {
             // Keep sizes of the vectors in variables.
             int nEvents{(int) events.size() / 4};
 
-            while (true) {
-                // Read all events in one integration time.
-                double t1{t0 + dt};
-                int N{0};
-                for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
-                    if (mem[4 * N] >= t1)
+            try {
+                while (true) {
+                    // Read all events in one integration time.
+                    double t1{t0 + dt};
+                    int N{0};
+                    for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
+                        if (mem[4 * N] >= t1)
+                            break;
+
+                    // Advance starting time.
+                    t0 = t1;
+
+                    // Feed events to the detector/tracker.
+                    T(mem, N);
+                    Eigen::MatrixXd targets {T.currentTracks()};
+
+                    for (int i{0}; i < targets.rows(); ++i) {
+                        positions.push_back(targets(i, 0));
+                        positions.push_back(targets(i, 1));
+                    }
+
+                    // Break once all events have been used.
+                    if (t0 > events[4 * (nEvents - 1)])
                         break;
 
-                // Advance starting time.
-                t0 = t1;
+                    // Evolve tracks in time.
+                    T.predict();
 
-                // Feed events to the detector/tracker.
-                T(mem, N);
-                targets = T.currentTracks();
-
-                for (int i {0}; i < targets.rows(); ++i) {
-                    positions.push_back(targets(i, 0));
-                    positions.push_back(targets(i, 1));
+                    // Update eventIdx
+                    mem += 4 * N;
                 }
-
-                // Break once all events have been used.
-                if (t0 > events[4 * (nEvents - 1)])
-                    break;
-
-                // Evolve tracks in time.
-                T.predict();
-
-                // Update eventIdx
-                mem += 4 * N;
+                PositionsVectorQueue.push(positions);
+                TrackingVectorQueue.pop();
             }
-            PositionsVectorQueue.push(positions);
-            TrackingVectorQueue.pop();
+            catch(...) {
+                positions.push_back(-10);
+                positions.push_back(-10);
+                PositionsVectorQueue.push(positions);
+                TrackingVectorQueue.pop();
+            }
         }
     }
 }
@@ -111,6 +118,9 @@ void plot_events(double dt, double mag, int Nx, int Ny, bool& active) {
         for (int i=0; i < positions.size(); i += 2) {
             int x = (int)positions[i];
             int y = (int)positions[i+1];
+            if (x == -10 || y == -10) {
+                continue;
+            }
 
             int y_min = std::max(y - y_increment, 0);
             int x_min = std::max(x - x_increment, 0);
