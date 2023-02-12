@@ -2,6 +2,7 @@
 
 #include <libcaercpp/devices/dvxplorer.hpp>
 #include <libcaercpp/devices/davis.hpp>
+#include <libcaercpp/filters/dvs_noise.hpp>
 
 #include <atomic>
 #include <csignal>
@@ -151,6 +152,11 @@ void read_packets(int Nx, int Ny, bool& active) {
             auto polarity = PlottingPacketQueue.front();
             cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
             for (const auto &e : *polarity) {
+                // Discard invalid events (filtered out).
+                if (!e.isValid()) {
+                    continue;
+                }
+
                 cvEvents.at<cv::Vec3b>(e.getY(), e.getX())
                     = e.getPolarity() ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
             }
@@ -161,7 +167,7 @@ void read_packets(int Nx, int Ny, bool& active) {
     }
 }
 
-std::tuple<int16_t, int16_t, libcaer::devices::davis> init_davis() {
+std::tuple<int16_t, int16_t, libcaer::devices::davis, libcaer::filters::DVSNoise> init_davis() {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -238,7 +244,32 @@ std::tuple<int16_t, int16_t, libcaer::devices::davis> init_davis() {
            caerBiasCoarseFineParse(prBias).coarseValue, caerBiasCoarseFineParse(prBias).fineValue,
            caerBiasCoarseFineParse(prsfBias).coarseValue, caerBiasCoarseFineParse(prsfBias).fineValue);
 
-    std::tuple<int16_t, int16_t, libcaer::devices::davis> ret = {davis_info.dvsSizeX, davis_info.dvsSizeY, davisHandle};
+    // Enable hardware filters if present.
+    if (davis_info.dvsHasBackgroundActivityFilter) {
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME, 8);
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY, true);
+
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD_TIME, 1);
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD, true);
+    }
+
+    // Add full-sized software filter to reduce DVS noise.
+    libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(davis_info.dvsSizeX, davis_info.dvsSizeX);
+
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, 2);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, 8);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, 2000);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, true);
+
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, 200);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, true);
+
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, true);
+
+    std::tuple<int16_t, int16_t, libcaer::devices::davis, libcaer::filters::DVSNoise> ret = {davis_info.dvsSizeX, davis_info.dvsSizeY, davisHandle, dvsNoiseFilter};
 
     return ret;
 }
@@ -340,7 +371,7 @@ int read_xplorer (const libcaer::devices::dvXplorer& handle, bool& active) {
     return (EXIT_SUCCESS);
 }
 
-int read_davis (const libcaer::devices::davis& handle, bool& active) {
+int read_davis (const libcaer::devices::davis& handle, const libcaer::filters::DVSNoise& dvsNoiseFilter, bool& active) {
     // Now let's get start getting some data from the device. We just loop in blocking mode,
     // no notification needed regarding new events. The shutdown notification, for example if
     // the device is disconnected, should be listened to.
@@ -348,6 +379,12 @@ int read_davis (const libcaer::devices::davis& handle, bool& active) {
 
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
+
+    // Disable APS (frames) and IMU, not used for showing event filtering.
+    handle.configSet(DAVIS_CONFIG_APS, DAVIS_CONFIG_APS_RUN, false);
+    handle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_ACCELEROMETER, false);
+    handle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_GYROSCOPE, false);
+    handle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_TEMPERATURE, false);
 
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
@@ -365,10 +402,17 @@ int read_davis (const libcaer::devices::davis& handle, bool& active) {
                 std::shared_ptr<const libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
+                dvsNoiseFilter.apply(*polarity);
+
                 std::vector<double> events;
                 PlottingPacketQueue.push(polarity);
 
                 for (const auto &e : *polarity) {
+                    // Discard invalid events (filtered out).
+                    if (!e.isValid()) {
+                        continue;
+                    }
+
                     events.push_back((double)e.getTimestamp()/1000);
                     events.push_back(e.getX());
                     events.push_back(e.getY());
@@ -493,10 +537,11 @@ int main(int argc, char* argv[]) {
         int Nx = std::get<0>(params);
         int Ny = std::get<1>(params);
         auto handle = std::get<2>(params);
+        auto filter = std::get<3>(params);
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, std::ref(active));
         std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, std::ref(active));
-        std::thread writing_thread(read_davis, std::ref(handle), std::ref(active));
+        std::thread writing_thread(read_davis, std::ref(handle), std::ref(filter), std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
