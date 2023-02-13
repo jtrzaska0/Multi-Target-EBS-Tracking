@@ -20,7 +20,7 @@
 
 static std::atomic_bool globalShutdown(false);
 
-std::queue<std::shared_ptr<libcaer::events::PolarityEventPacket>> PlottingPacketQueue;
+std::queue<std::vector<double>> PlottingPacketQueue;
 std::queue<std::vector<double>> TrackingVectorQueue;
 std::queue<cv::Mat> CVMatrixQueue;
 std::queue<std::vector<double>> PositionsVectorQueue;
@@ -48,6 +48,7 @@ void tracker (double dt, DBSCAN_KNN T, bool&active) {
             std::vector<double> positions;
             try {
                 if (!events.empty()) {
+                    printf("Events Size: %zu\n", events.size());
                     // The detector takes a pointer to events.
                     double *mem{events.data()};
                     // Starting time.
@@ -153,25 +154,21 @@ void plot_events(double dt, double mag, int Nx, int Ny, bool& active) {
 void read_packets(int Nx, int Ny, bool& active) {
     while (active) {
         while (!PlottingPacketQueue.empty() && active) {
-            auto polarity = PlottingPacketQueue.front();
+            auto events = PlottingPacketQueue.front();
             cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
-            for (const auto &e : *polarity) {
-                // Discard invalid events (filtered out).
-                if (!e.isValid()) {
-                    continue;
+            if (!events.empty()) {
+                for (int i = 0; i < events.size(); i += 4) {
+                    cvEvents.at<cv::Vec3b>((int) events[i + 1], (int) events[i + 2]) = (int) events[i + 3] ? cv::Vec3b{
+                            255, 255, 255} : cv::Vec3b{0, 0, 0};
                 }
-
-                cvEvents.at<cv::Vec3b>(e.getY(), e.getX())
-                    = e.getPolarity() ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
             }
-
             CVMatrixQueue.push(cvEvents);
             PlottingPacketQueue.pop();
         }
     }
 }
 
-std::tuple<int16_t, int16_t, libcaer::devices::dvXplorer> init_xplorer() {
+int read_xplorer (double dt, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -197,32 +194,46 @@ std::tuple<int16_t, int16_t, libcaer::devices::dvXplorer> init_xplorer() {
     if (sigaction(SIGTERM, &shutdownAction, nullptr) == -1) {
         libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
                           "Failed to set signal handler for SIGTERM. Error: %d.", errno);
+        return (EXIT_FAILURE);
     }
 
     if (sigaction(SIGINT, &shutdownAction, nullptr) == -1) {
         libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
                           "Failed to set signal handler for SIGINT. Error: %d.", errno);
+        return (EXIT_FAILURE);
     }
 #endif
 
-    // Open a DVS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
+    // Open a DAVIS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
     auto handle = libcaer::devices::dvXplorer(1);
 
     // Let's take a look at the information we have on the device.
-    auto info = handle.infoGet();
+    auto xplorer_info = handle.infoGet();
 
-    printf("%s --- ID: %d, DVS X: %d, DVS Y: %d, Firmware: %d, Logic: %d.\n", info.deviceString, info.deviceID,
-           info.dvsSizeX, info.dvsSizeY, info.firmwareVersion, info.logicVersion);
+    printf("%s --- ID: %d, Master: %d, DVS X: %d, DVS Y: %d, Logic: %d.\n", xplorer_info.deviceString,
+           xplorer_info.deviceID, xplorer_info.deviceIsMaster, xplorer_info.dvsSizeX, xplorer_info.dvsSizeY,
+           xplorer_info.logicVersion);
 
     // Send the default configuration before using the device.
     // No configuration is sent automatically!
     handle.sendDefaultConfig();
-    std::tuple<int16_t, int16_t, libcaer::devices::dvXplorer> ret = {info.dvsSizeX, info.dvsSizeY, handle};
 
-    return ret;
-}
+    // Add full-sized software filter to reduce DVS noise.
+    libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(xplorer_info.dvsSizeX, xplorer_info.dvsSizeY);
 
-int read_xplorer (const libcaer::devices::dvXplorer& handle, bool& active) {
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, 2);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, 8);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, 2000);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, true);
+
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, 200);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, true);
+
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, true);
+
     // Now let's get start getting some data from the device. We just loop in blocking mode,
     // no notification needed regarding new events. The shutdown notification, for example if
     // the device is disconnected, should be listened to.
@@ -232,31 +243,54 @@ int read_xplorer (const libcaer::devices::dvXplorer& handle, bool& active) {
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
-        std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
-        if (packetContainer == nullptr) {
-            continue; // Skip if nothing there.
-        }
-
-        for (auto &packet: *packetContainer) {
-            if (packet == nullptr) {
-                //printf("Packet is empty (not present).\n");
+        double time_start = 0;
+        double time_current = 0;
+        while (time_current - time_start < dt) {
+            std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
+            std::vector<double> events;
+            if (packetContainer == nullptr) {
                 continue; // Skip if nothing there.
             }
 
-            if (packet->getEventType() == POLARITY_EVENT) {
-                std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
-                        = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
-
-                std::vector<double> events;
-                PlottingPacketQueue.push(polarity);
-
-                for (const auto &e : *polarity) {
-                    events.push_back((double)e.getTimestamp()/1000);
-                    events.push_back(e.getX());
-                    events.push_back(e.getY());
-                    events.push_back(e.getPolarity());
+            for (auto &packet: *packetContainer) {
+                if (packet == nullptr) {
+                    //printf("Packet is empty (not present).\n");
+                    continue; // Skip if nothing there.
                 }
-                TrackingVectorQueue.push(events);
+
+                if (packet->getEventType() == POLARITY_EVENT) {
+                    std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
+                            = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
+
+                    const libcaer::events::PolarityEvent &firstEvent = (*polarity)[0];
+                    double ts = (double)firstEvent.getTimestamp()/1000;
+                    if (time_start == 0 && time_current == 0) {
+                        time_start = ts;
+                    }
+                    if (ts - time_start < dt) {
+                        time_current = ts;
+                    }
+                    else {
+                        time_start = ts;
+                        time_current = ts;
+                    }
+
+                    dvsNoiseFilter.apply(*polarity);
+
+                    for (const auto &e: *polarity) {
+                        // Discard invalid events (filtered out).
+                        if (!e.isValid()) {
+                            continue;
+                        }
+
+                        events.push_back((double) e.getTimestamp() / 1000);
+                        events.push_back(e.getX());
+                        events.push_back(e.getY());
+                        events.push_back(e.getPolarity());
+                    }
+                    TrackingVectorQueue.push(events);
+                    //PlottingPacketQueue.push(events);
+                }
             }
         }
     }
@@ -268,7 +302,7 @@ int read_xplorer (const libcaer::devices::dvXplorer& handle, bool& active) {
     return (EXIT_SUCCESS);
 }
 
-int read_davis (bool& active) {
+int read_davis (double dt, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -328,7 +362,7 @@ int read_davis (bool& active) {
     }
 
     // Add full-sized software filter to reduce DVS noise.
-    libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(davis_info.dvsSizeX, davis_info.dvsSizeX);
+    libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(davis_info.dvsSizeX, davis_info.dvsSizeY);
 
     dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, true);
     dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, true);
@@ -358,38 +392,54 @@ int read_davis (bool& active) {
     davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_TEMPERATURE, false);
 
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
-        std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
-        if (packetContainer == nullptr) {
-            continue; // Skip if nothing there.
-        }
-
-        for (auto &packet: *packetContainer) {
-            if (packet == nullptr) {
-                //printf("Packet is empty (not present).\n");
+        double time_start = 0;
+        double time_current = 0;
+        while (time_current - time_start < dt) {
+            std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
+            std::vector<double> events;
+            if (packetContainer == nullptr) {
                 continue; // Skip if nothing there.
             }
 
-            if (packet->getEventType() == POLARITY_EVENT) {
-                std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
-                        = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
+            for (auto &packet: *packetContainer) {
+                if (packet == nullptr) {
+                    //printf("Packet is empty (not present).\n");
+                    continue; // Skip if nothing there.
+                }
 
-                dvsNoiseFilter.apply(*polarity);
+                if (packet->getEventType() == POLARITY_EVENT) {
+                    std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
+                            = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
-                std::vector<double> events;
-                PlottingPacketQueue.push(polarity);
-
-                for (const auto &e : *polarity) {
-                    // Discard invalid events (filtered out).
-                    if (!e.isValid()) {
-                        continue;
+                    const libcaer::events::PolarityEvent &firstEvent = (*polarity)[0];
+                    double ts = (double)firstEvent.getTimestamp()/1000;
+                    if (time_start == 0 && time_current == 0) {
+                        time_start = ts;
+                    }
+                    if (ts - time_start < dt) {
+                        time_current = ts;
+                    }
+                    else {
+                        time_start = ts;
+                        time_current = ts;
                     }
 
-                    events.push_back((double)e.getTimestamp()/1000);
-                    events.push_back(e.getX());
-                    events.push_back(e.getY());
-                    events.push_back(e.getPolarity());
+                    dvsNoiseFilter.apply(*polarity);
+
+                    for (const auto &e: *polarity) {
+                        // Discard invalid events (filtered out).
+                        if (!e.isValid()) {
+                            continue;
+                        }
+
+                        events.push_back((double) e.getTimestamp() / 1000);
+                        events.push_back(e.getX());
+                        events.push_back(e.getY());
+                        events.push_back(e.getPolarity());
+                    }
+                    TrackingVectorQueue.push(events);
+                    //PlottingPacketQueue.push(events);
                 }
-                TrackingVectorQueue.push(events);
             }
         }
     }
@@ -436,6 +486,7 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     imager.join();
 }
 
+// TODO: Separate reader loops into separate functions
 int main(int argc, char* argv[]) {
     /*
      Simulate live data tracking using a CSV file containing event data.
@@ -492,21 +543,19 @@ int main(int argc, char* argv[]) {
     bool active = true;
 
     if (device_type == "xplorer") {
-        auto params = init_xplorer();
-        int Nx = std::get<0>(params);
-        int Ny = std::get<1>(params);
-        auto handle = std::get<2>(params);
+        int Nx = 640;
+        int Ny = 480;
+        std::thread writing_thread(read_xplorer, integrationtime, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, std::ref(active));
         std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, std::ref(active));
-        std::thread writing_thread(read_xplorer, std::ref(handle), std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
     else {
         int Nx = 346;
         int Ny = 260;
-        std::thread writing_thread(read_davis, std::ref(active));
+        std::thread writing_thread(read_davis, integrationtime, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, std::ref(active));
         std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, std::ref(active));
