@@ -1,4 +1,4 @@
-#include <fstream>
+# define eigen_assert(X) do { if(!(X)) throw std::runtime_error(#X); } while(false);
 
 #include <libcaercpp/devices/dvxplorer.hpp>
 #include <libcaercpp/devices/davis.hpp>
@@ -63,6 +63,7 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
                             for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
                                 if (mem[4 * N] >= t1)
                                     break;
+
                             // Advance starting time.
                             t0 = t1;
 
