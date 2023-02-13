@@ -177,60 +177,7 @@ void read_packets(int Nx, int Ny, bool& active) {
     }
 }
 
-std::tuple<double, double> process_packet(double time_start, double time_current, double aggregationtime, bool enable_tracking, const libcaer::filters::DVSNoise& dvsNoiseFilter, std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer) {
-    std::vector<double> events;
-    if (packetContainer == nullptr) {
-        std::tuple<double, double> ret = {time_start, time_current};
-        return ret;
-    }
-
-    for (auto &packet: *packetContainer) {
-        if (packet == nullptr) {
-            //printf("Packet is empty (not present).\n");
-            continue; // Skip if nothing there.
-        }
-
-        if (packet->getEventType() == POLARITY_EVENT) {
-            std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
-                    = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
-
-            const libcaer::events::PolarityEvent &firstEvent = (*polarity)[0];
-            double ts = (double)firstEvent.getTimestamp()/1000;
-            if (time_start == 0 && time_current == 0) {
-                time_start = ts;
-            }
-            if (ts - time_start < aggregationtime) {
-                time_current = ts;
-            }
-            else {
-                time_start = ts;
-                time_current = ts;
-            }
-
-            dvsNoiseFilter.apply(*polarity);
-
-            for (const auto &e: *polarity) {
-                // Discard invalid events (filtered out).
-                if (!e.isValid()) {
-                    continue;
-                }
-
-                events.push_back((double) e.getTimestamp() / 1000);
-                events.push_back(e.getX());
-                events.push_back(e.getY());
-                events.push_back(e.getPolarity());
-            }
-            if (enable_tracking) {
-                TrackingVectorQueue.push(events);
-            }
-            PlottingPacketQueue.push(events);
-        }
-    }
-    std::tuple<double, double> ret = {time_start, time_current};
-    return ret;
-}
-
-int read_xplorer (double dt, double aggregationtime, bool enable_tracking, bool& active) {
+int read_xplorer (int num_packets, bool enable_tracking, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -304,12 +251,45 @@ int read_xplorer (double dt, double aggregationtime, bool enable_tracking, bool&
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
+    int processed = 0;
+    std::vector<double> events;
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
-        double time_start = 0;
-        double time_current = 0;
-        while (time_current - time_start < aggregationtime) {
-            std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
-            std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, enable_tracking, dvsNoiseFilter, std::move(packetContainer));
+        std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
+        if (packetContainer == nullptr) {
+            continue;
+        }
+        for (auto &packet: *packetContainer) {
+            if (packet == nullptr) {
+                continue; // Skip if nothing there.
+            }
+
+            if (packet->getEventType() == POLARITY_EVENT) {
+                std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
+                        = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
+
+                dvsNoiseFilter.apply(*polarity);
+
+                for (const auto &e: *polarity) {
+                    // Discard invalid events (filtered out).
+                    if (!e.isValid()) {
+                        continue;
+                    }
+
+                    events.push_back((double) e.getTimestamp() / 1000);
+                    events.push_back(e.getX());
+                    events.push_back(e.getY());
+                    events.push_back(e.getPolarity());
+                }
+                processed += 1;
+                if (processed >= num_packets) {
+                    if (enable_tracking) {
+                        TrackingVectorQueue.push(events);
+                    }
+                    PlottingPacketQueue.push(events);
+                    events.clear();
+                    processed = 0;
+                }
+            }
         }
     }
     handle.dataStop();
@@ -320,7 +300,7 @@ int read_xplorer (double dt, double aggregationtime, bool enable_tracking, bool&
     return (EXIT_SUCCESS);
 }
 
-int read_davis (double dt, double aggregationtime, bool enable_tracking, bool& active) {
+int read_davis (int num_packets, bool enable_tracking, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -409,12 +389,46 @@ int read_davis (double dt, double aggregationtime, bool enable_tracking, bool& a
     davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_GYROSCOPE, false);
     davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_TEMPERATURE, false);
 
+    int processed = 0;
+    std::vector<double> events;
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
-        double time_start = 0;
-        double time_current = 0;
-        while (time_current - time_start < aggregationtime) {
-            std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
-            std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, enable_tracking, dvsNoiseFilter, std::move(packetContainer));
+        std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
+        if (packetContainer == nullptr) {
+            continue;
+        }
+
+        for (auto &packet: *packetContainer) {
+            if (packet == nullptr) {
+                continue; // Skip if nothing there.
+            }
+
+            if (packet->getEventType() == POLARITY_EVENT) {
+                std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
+                        = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
+
+                dvsNoiseFilter.apply(*polarity);
+
+                for (const auto &e: *polarity) {
+                    // Discard invalid events (filtered out).
+                    if (!e.isValid()) {
+                        continue;
+                    }
+
+                    events.push_back((double) e.getTimestamp() / 1000);
+                    events.push_back(e.getX());
+                    events.push_back(e.getY());
+                    events.push_back(e.getPolarity());
+                }
+                processed += 1;
+                if (processed >= num_packets) {
+                    if (enable_tracking) {
+                        TrackingVectorQueue.push(events);
+                    }
+                    PlottingPacketQueue.push(events);
+                    events.clear();
+                    processed = 0;
+                }
+            }
         }
     }
     davisHandle.dataStop();
@@ -468,7 +482,7 @@ int main(int argc, char* argv[]) {
      Args:
           argv[1]: Device type: "xplorer" or "davis"
           argv[2]: Integration time in milliseconds.
-          argv[3]: Aggregation time in milliseconds.
+          argv[3]: Number of event packets to aggregate.
           argv[4]: Tracking: 0 for disabled, 1 for enabled
           argv[5]: Magnification
 
@@ -483,7 +497,7 @@ int main(int argc, char* argv[]) {
 
     std::string device_type = {std::string(argv[1])};
     double integrationtime = {std::stod(argv[2])};
-    double aggregationtime = {std::stod(argv[3])};
+    int num_packets = {std::stoi(argv[3])};
     bool enable_tracking = {std::stoi(argv[4])!=0};
     double mag = {std::stod(argv[5])};
 
@@ -522,7 +536,7 @@ int main(int argc, char* argv[]) {
     if (device_type == "xplorer") {
         int Nx = 640;
         int Ny = 480;
-        std::thread writing_thread(read_xplorer, integrationtime, aggregationtime, enable_tracking, std::ref(active));
+        std::thread writing_thread(read_xplorer, num_packets, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
         std::thread image_thread(plot_events, mag, Nx, Ny, enable_tracking, std::ref(active));
@@ -532,7 +546,7 @@ int main(int argc, char* argv[]) {
     else {
         int Nx = 346;
         int Ny = 260;
-        std::thread writing_thread(read_davis, integrationtime, aggregationtime, enable_tracking, std::ref(active));
+        std::thread writing_thread(read_davis, num_packets, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
         std::thread image_thread(plot_events, mag, Nx, Ny, enable_tracking, std::ref(active));
