@@ -106,7 +106,7 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
     }
 }
 
-void plot_events(double dt, double mag, int Nx, int Ny, bool enable_tracking, bool& active) {
+void plot_events(double mag, int Nx, int Ny, bool enable_tracking, bool& active) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
 
@@ -151,7 +151,7 @@ void plot_events(double dt, double mag, int Nx, int Ny, bool enable_tracking, bo
 
 
         cv::imshow("PLOT_EVENTS", cvmat);
-        cv::waitKey((int)dt);
+        cv::waitKey(1);
 
         CVMatrixQueue.pop();
     }
@@ -177,7 +177,7 @@ void read_packets(int Nx, int Ny, bool& active) {
     }
 }
 
-std::tuple<double, double> process_packet(double time_start, double time_current, double dt, bool enable_tracking, const libcaer::filters::DVSNoise& dvsNoiseFilter, std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer) {
+std::tuple<double, double> process_packet(double time_start, double time_current, double aggregationtime, bool enable_tracking, const libcaer::filters::DVSNoise& dvsNoiseFilter, std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer) {
     std::vector<double> events;
     if (packetContainer == nullptr) {
         std::tuple<double, double> ret = {time_start, time_current};
@@ -199,7 +199,7 @@ std::tuple<double, double> process_packet(double time_start, double time_current
             if (time_start == 0 && time_current == 0) {
                 time_start = ts;
             }
-            if (ts - time_start < dt) {
+            if (ts - time_start < aggregationtime) {
                 time_current = ts;
             }
             else {
@@ -230,7 +230,7 @@ std::tuple<double, double> process_packet(double time_start, double time_current
     return ret;
 }
 
-int read_xplorer (double dt, bool enable_tracking, bool& active) {
+int read_xplorer (double dt, double aggregationtime, bool enable_tracking, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -307,7 +307,7 @@ int read_xplorer (double dt, bool enable_tracking, bool& active) {
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         double time_start = 0;
         double time_current = 0;
-        while (time_current - time_start < dt) {
+        while (time_current - time_start < aggregationtime) {
             std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
             std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, enable_tracking, dvsNoiseFilter, std::move(packetContainer));
         }
@@ -320,7 +320,7 @@ int read_xplorer (double dt, bool enable_tracking, bool& active) {
     return (EXIT_SUCCESS);
 }
 
-int read_davis (double dt, bool enable_tracking, bool& active) {
+int read_davis (double dt, double aggregationtime, bool enable_tracking, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -412,7 +412,7 @@ int read_davis (double dt, bool enable_tracking, bool& active) {
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         double time_start = 0;
         double time_current = 0;
-        while (time_current - time_start < dt) {
+        while (time_current - time_start < aggregationtime) {
             std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
             std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, enable_tracking, dvsNoiseFilter, std::move(packetContainer));
         }
@@ -468,22 +468,24 @@ int main(int argc, char* argv[]) {
      Args:
           argv[1]: Device type: "xplorer" or "davis"
           argv[2]: Integration time in milliseconds.
-          argv[3]: Tracking: 0 for disabled, 1 for enabled
-          argv[4]: Magnification
+          argv[3]: Aggregation time in milliseconds.
+          argv[4]: Tracking: 0 for disabled, 1 for enabled
+          argv[5]: Magnification
 
      Ret:
           0
      */
 
-    if (argc != 5) {
+    if (argc != 6) {
         printf("Invalid number of arguments.\n");
         return 0;
     }
 
     std::string device_type = {std::string(argv[1])};
     double integrationtime = {std::stod(argv[2])};
-    bool enable_tracking = {std::stoi(argv[3])!=0};
-    double mag = {std::stod(argv[4])};
+    double aggregationtime = {std::stod(argv[3])};
+    bool enable_tracking = {std::stoi(argv[4])!=0};
+    double mag = {std::stod(argv[5])};
 
     /**Create an Algorithm object here.**/
     // Matrix initializer
@@ -520,20 +522,20 @@ int main(int argc, char* argv[]) {
     if (device_type == "xplorer") {
         int Nx = 640;
         int Ny = 480;
-        std::thread writing_thread(read_xplorer, integrationtime, enable_tracking, std::ref(active));
+        std::thread writing_thread(read_xplorer, integrationtime, aggregationtime, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, enable_tracking, std::ref(active));
+        std::thread image_thread(plot_events, mag, Nx, Ny, enable_tracking, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
     else {
         int Nx = 346;
         int Ny = 260;
-        std::thread writing_thread(read_davis, integrationtime, enable_tracking, std::ref(active));
+        std::thread writing_thread(read_davis, integrationtime, aggregationtime, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, enable_tracking, std::ref(active));
+        std::thread image_thread(plot_events, mag, Nx, Ny, enable_tracking, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
