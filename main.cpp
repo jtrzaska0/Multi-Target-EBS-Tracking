@@ -48,7 +48,6 @@ void tracker (double dt, DBSCAN_KNN T, bool&active) {
             std::vector<double> positions;
             try {
                 if (!events.empty()) {
-                    printf("Events Size: %zu\n", events.size());
                     // The detector takes a pointer to events.
                     double *mem{events.data()};
                     // Starting time.
@@ -158,14 +157,67 @@ void read_packets(int Nx, int Ny, bool& active) {
             cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
             if (!events.empty()) {
                 for (int i = 0; i < events.size(); i += 4) {
-                    cvEvents.at<cv::Vec3b>((int) events[i + 1], (int) events[i + 2]) = (int) events[i + 3] ? cv::Vec3b{
-                            255, 255, 255} : cv::Vec3b{0, 0, 0};
+                    int x = (int) events.at(i + 1);
+                    int y = (int) events.at(i + 2);
+                    int pol = (int) events.at(i + 3);
+                    cvEvents.at<cv::Vec3b>(y, x) = pol ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
                 }
             }
             CVMatrixQueue.push(cvEvents);
             PlottingPacketQueue.pop();
         }
     }
+}
+
+std::tuple<double, double> process_packet(double time_start, double time_current, double dt, const libcaer::filters::DVSNoise& dvsNoiseFilter, std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer) {
+    std::vector<double> events;
+    if (packetContainer == nullptr) {
+        std::tuple<double, double> ret = {time_start, time_current};
+        return ret;
+    }
+
+    for (auto &packet: *packetContainer) {
+        if (packet == nullptr) {
+            //printf("Packet is empty (not present).\n");
+            continue; // Skip if nothing there.
+        }
+
+        if (packet->getEventType() == POLARITY_EVENT) {
+            std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
+                    = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
+
+            const libcaer::events::PolarityEvent &firstEvent = (*polarity)[0];
+            double ts = (double)firstEvent.getTimestamp()/1000;
+            if (time_start == 0 && time_current == 0) {
+                time_start = ts;
+            }
+            if (ts - time_start < dt) {
+                time_current = ts;
+            }
+            else {
+                time_start = ts;
+                time_current = ts;
+            }
+
+            dvsNoiseFilter.apply(*polarity);
+
+            for (const auto &e: *polarity) {
+                // Discard invalid events (filtered out).
+                if (!e.isValid()) {
+                    continue;
+                }
+
+                events.push_back((double) e.getTimestamp() / 1000);
+                events.push_back(e.getX());
+                events.push_back(e.getY());
+                events.push_back(e.getPolarity());
+            }
+            TrackingVectorQueue.push(events);
+            PlottingPacketQueue.push(events);
+        }
+    }
+    std::tuple<double, double> ret = {time_start, time_current};
+    return ret;
 }
 
 int read_xplorer (double dt, bool& active) {
@@ -247,51 +299,7 @@ int read_xplorer (double dt, bool& active) {
         double time_current = 0;
         while (time_current - time_start < dt) {
             std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
-            std::vector<double> events;
-            if (packetContainer == nullptr) {
-                continue; // Skip if nothing there.
-            }
-
-            for (auto &packet: *packetContainer) {
-                if (packet == nullptr) {
-                    //printf("Packet is empty (not present).\n");
-                    continue; // Skip if nothing there.
-                }
-
-                if (packet->getEventType() == POLARITY_EVENT) {
-                    std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
-                            = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
-
-                    const libcaer::events::PolarityEvent &firstEvent = (*polarity)[0];
-                    double ts = (double)firstEvent.getTimestamp()/1000;
-                    if (time_start == 0 && time_current == 0) {
-                        time_start = ts;
-                    }
-                    if (ts - time_start < dt) {
-                        time_current = ts;
-                    }
-                    else {
-                        time_start = ts;
-                        time_current = ts;
-                    }
-
-                    dvsNoiseFilter.apply(*polarity);
-
-                    for (const auto &e: *polarity) {
-                        // Discard invalid events (filtered out).
-                        if (!e.isValid()) {
-                            continue;
-                        }
-
-                        events.push_back((double) e.getTimestamp() / 1000);
-                        events.push_back(e.getX());
-                        events.push_back(e.getY());
-                        events.push_back(e.getPolarity());
-                    }
-                    TrackingVectorQueue.push(events);
-                    //PlottingPacketQueue.push(events);
-                }
-            }
+            std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, dvsNoiseFilter, std::move(packetContainer));
         }
     }
     handle.dataStop();
@@ -396,51 +404,7 @@ int read_davis (double dt, bool& active) {
         double time_current = 0;
         while (time_current - time_start < dt) {
             std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
-            std::vector<double> events;
-            if (packetContainer == nullptr) {
-                continue; // Skip if nothing there.
-            }
-
-            for (auto &packet: *packetContainer) {
-                if (packet == nullptr) {
-                    //printf("Packet is empty (not present).\n");
-                    continue; // Skip if nothing there.
-                }
-
-                if (packet->getEventType() == POLARITY_EVENT) {
-                    std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
-                            = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
-
-                    const libcaer::events::PolarityEvent &firstEvent = (*polarity)[0];
-                    double ts = (double)firstEvent.getTimestamp()/1000;
-                    if (time_start == 0 && time_current == 0) {
-                        time_start = ts;
-                    }
-                    if (ts - time_start < dt) {
-                        time_current = ts;
-                    }
-                    else {
-                        time_start = ts;
-                        time_current = ts;
-                    }
-
-                    dvsNoiseFilter.apply(*polarity);
-
-                    for (const auto &e: *polarity) {
-                        // Discard invalid events (filtered out).
-                        if (!e.isValid()) {
-                            continue;
-                        }
-
-                        events.push_back((double) e.getTimestamp() / 1000);
-                        events.push_back(e.getX());
-                        events.push_back(e.getY());
-                        events.push_back(e.getPolarity());
-                    }
-                    TrackingVectorQueue.push(events);
-                    //PlottingPacketQueue.push(events);
-                }
-            }
+            std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, dvsNoiseFilter, std::move(packetContainer));
         }
     }
     davisHandle.dataStop();
@@ -486,7 +450,6 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     imager.join();
 }
 
-// TODO: Separate reader loops into separate functions
 int main(int argc, char* argv[]) {
     /*
      Simulate live data tracking using a CSV file containing event data.
