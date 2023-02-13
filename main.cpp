@@ -41,69 +41,71 @@ static void usbShutdownHandler(void *ptr) {
 // Read csv and process in "real time"
 // dt: integration time in ms
 // delay: time behind actual in ms
-void tracker (double dt, DBSCAN_KNN T, bool&active) {
-    while (active) {
-        while (!TrackingVectorQueue.empty() && active) {
-            auto events = TrackingVectorQueue.front();
-            std::vector<double> positions;
-            try {
-                if (!events.empty()) {
-                    // The detector takes a pointer to events.
-                    double *mem{events.data()};
-                    // Starting time.
-                    double t0{events[0]};
+void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
+    if (enable_tracking) {
+        while (active) {
+            while (!TrackingVectorQueue.empty() && active) {
+                auto events = TrackingVectorQueue.front();
+                std::vector<double> positions;
+                try {
+                    if (!events.empty()) {
+                        // The detector takes a pointer to events.
+                        double *mem{events.data()};
+                        // Starting time.
+                        double t0{events[0]};
 
-                    // Keep sizes of the vectors in variables.
-                    int nEvents{(int) events.size() / 4};
-                    while (true) {
-                        // Read all events in one integration time.
-                        double t1{t0 + dt};
-                        int N{0};
-                        for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
-                            if (mem[4 * N] >= t1)
+                        // Keep sizes of the vectors in variables.
+                        int nEvents{(int) events.size() / 4};
+                        while (true) {
+                            // Read all events in one integration time.
+                            double t1{t0 + dt};
+                            int N{0};
+                            for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
+                                if (mem[4 * N] >= t1)
+                                    break;
+                            // Advance starting time.
+                            t0 = t1;
+
+                            // Feed events to the detector/tracker.
+                            T(mem, N);
+                            Eigen::MatrixXd targets{T.currentTracks()};
+
+                            for (int i{0}; i < targets.rows(); ++i) {
+                                positions.push_back(targets(i, 0));
+                                positions.push_back(targets(i, 1));
+                            }
+
+                            // Break once all events have been used.
+                            if (t0 > events[4 * (nEvents - 1)])
                                 break;
-                        // Advance starting time.
-                        t0 = t1;
 
-                        // Feed events to the detector/tracker.
-                        T(mem, N);
-                        Eigen::MatrixXd targets{T.currentTracks()};
+                            // Evolve tracks in time.
+                            T.predict();
 
-                        for (int i{0}; i < targets.rows(); ++i) {
-                            positions.push_back(targets(i, 0));
-                            positions.push_back(targets(i, 1));
+                            // Update eventIdx
+                            mem += 4 * N;
                         }
-
-                        // Break once all events have been used.
-                        if (t0 > events[4 * (nEvents - 1)])
-                            break;
-
-                        // Evolve tracks in time.
-                        T.predict();
-
-                        // Update eventIdx
-                        mem += 4 * N;
+                        PositionsVectorQueue.push(positions);
+                        TrackingVectorQueue.pop();
+                    } else {
+                        positions.push_back(-10);
+                        positions.push_back(-10);
+                        PositionsVectorQueue.push(positions);
+                        TrackingVectorQueue.pop();
                     }
-                    PositionsVectorQueue.push(positions);
-                    TrackingVectorQueue.pop();
-                } else {
+                }
+                catch (...) {
                     positions.push_back(-10);
                     positions.push_back(-10);
                     PositionsVectorQueue.push(positions);
                     TrackingVectorQueue.pop();
                 }
             }
-            catch(...) {
-                positions.push_back(-10);
-                positions.push_back(-10);
-                PositionsVectorQueue.push(positions);
-                TrackingVectorQueue.pop();
-            }
         }
     }
 }
 
-void plot_events(double dt, double mag, int Nx, int Ny, bool& active) {
+void plot_events(double dt, double mag, int Nx, int Ny, bool enable_tracking, bool& active) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
 
@@ -113,39 +115,44 @@ void plot_events(double dt, double mag, int Nx, int Ny, bool& active) {
         while (CVMatrixQueue.empty() && active) {
             // Do nothing until there is a matrix to process
         }
-        while (PositionsVectorQueue.empty() && active) {
-            // Do nothing until there is a corresponding positions vector
-        }
         auto cvmat = CVMatrixQueue.front();
-        auto positions = PositionsVectorQueue.front();
-
-
-        for (int i=0; i < positions.size(); i += 2) {
-            int x = (int)positions[i];
-            int y = (int)positions[i+1];
-            if (x == -10 || y == -10) {
-                continue;
+        if (enable_tracking) {
+            while (PositionsVectorQueue.empty() && active) {
+                // Do nothing until there is a corresponding positions vector
             }
 
-            int y_min = std::max(y - y_increment, 0);
-            int x_min = std::max(x - x_increment, 0);
-            int y_max = std::min(y + y_increment, Ny - 1);
-            int x_max = std::min(x + x_increment, Nx - 1);
+            auto positions = PositionsVectorQueue.front();
 
-            cv::Point p1(x_min, y_min);
-            cv::Point p2(x_max, y_max);
-            int thickness = 2;
-            rectangle(cvmat, p1, p2,
-                      cv::Scalar(255, 0, 0),
-                      thickness, cv::LINE_8);
+            for (int i=0; i < positions.size(); i += 2) {
+                int x = (int)positions[i];
+                int y = (int)positions[i+1];
+                if (x == -10 || y == -10) {
+                    continue;
+                }
+
+                int y_min = std::max(y - y_increment, 0);
+                int x_min = std::max(x - x_increment, 0);
+                int y_max = std::min(y + y_increment, Ny - 1);
+                int x_max = std::min(x + x_increment, Nx - 1);
+
+                cv::Point p1(x_min, y_min);
+                cv::Point p2(x_max, y_max);
+                int thickness = 2;
+                rectangle(cvmat, p1, p2,
+                          cv::Scalar(255, 0, 0),
+                          thickness, cv::LINE_8);
 
 
+            }
+
+            PositionsVectorQueue.pop();
         }
+
+
         cv::imshow("PLOT_EVENTS", cvmat);
         cv::waitKey((int)dt);
 
         CVMatrixQueue.pop();
-        PositionsVectorQueue.pop();
     }
     cv::destroyWindow("PLOT_EVENTS");
 }
@@ -169,7 +176,7 @@ void read_packets(int Nx, int Ny, bool& active) {
     }
 }
 
-std::tuple<double, double> process_packet(double time_start, double time_current, double dt, const libcaer::filters::DVSNoise& dvsNoiseFilter, std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer) {
+std::tuple<double, double> process_packet(double time_start, double time_current, double dt, bool enable_tracking, const libcaer::filters::DVSNoise& dvsNoiseFilter, std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer) {
     std::vector<double> events;
     if (packetContainer == nullptr) {
         std::tuple<double, double> ret = {time_start, time_current};
@@ -212,7 +219,9 @@ std::tuple<double, double> process_packet(double time_start, double time_current
                 events.push_back(e.getY());
                 events.push_back(e.getPolarity());
             }
-            TrackingVectorQueue.push(events);
+            if (enable_tracking) {
+                TrackingVectorQueue.push(events);
+            }
             PlottingPacketQueue.push(events);
         }
     }
@@ -220,7 +229,7 @@ std::tuple<double, double> process_packet(double time_start, double time_current
     return ret;
 }
 
-int read_xplorer (double dt, bool& active) {
+int read_xplorer (double dt, bool enable_tracking, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -299,7 +308,7 @@ int read_xplorer (double dt, bool& active) {
         double time_current = 0;
         while (time_current - time_start < dt) {
             std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
-            std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, dvsNoiseFilter, std::move(packetContainer));
+            std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, enable_tracking, dvsNoiseFilter, std::move(packetContainer));
         }
     }
     handle.dataStop();
@@ -310,7 +319,7 @@ int read_xplorer (double dt, bool& active) {
     return (EXIT_SUCCESS);
 }
 
-int read_davis (double dt, bool& active) {
+int read_davis (double dt, bool enable_tracking, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -404,7 +413,7 @@ int read_davis (double dt, bool& active) {
         double time_current = 0;
         while (time_current - time_start < dt) {
             std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
-            std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, dvsNoiseFilter, std::move(packetContainer));
+            std::tie(time_start, time_current) = process_packet(time_start, time_current, dt, enable_tracking, dvsNoiseFilter, std::move(packetContainer));
         }
     }
     davisHandle.dataStop();
@@ -458,20 +467,22 @@ int main(int argc, char* argv[]) {
      Args:
           argv[1]: Device type: "xplorer" or "davis"
           argv[2]: Integration time in milliseconds.
-          argv[3]: Magnification
+          argv[3]: Tracking: 0 for disabled, 1 for enabled
+          argv[4]: Magnification
 
      Ret:
           0
      */
 
-    if (argc != 4) {
+    if (argc != 5) {
         printf("Invalid number of arguments.\n");
         return 0;
     }
 
     std::string device_type = {std::string(argv[1])};
     double integrationtime = {std::stod(argv[2])};
-    double mag = {std::stod(argv[3])};
+    bool enable_tracking = {std::stoi(argv[3])!=0};
+    double mag = {std::stod(argv[4])};
 
     /**Create an Algorithm object here.**/
     // Matrix initializer
@@ -508,20 +519,20 @@ int main(int argc, char* argv[]) {
     if (device_type == "xplorer") {
         int Nx = 640;
         int Ny = 480;
-        std::thread writing_thread(read_xplorer, integrationtime, std::ref(active));
+        std::thread writing_thread(read_xplorer, integrationtime, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
-        std::thread tracking_thread(tracker, integrationtime, algo, std::ref(active));
-        std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, std::ref(active));
+        std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
+        std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, enable_tracking, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
     else {
         int Nx = 346;
         int Ny = 260;
-        std::thread writing_thread(read_davis, integrationtime, std::ref(active));
+        std::thread writing_thread(read_davis, integrationtime, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
-        std::thread tracking_thread(tracker, integrationtime, algo, std::ref(active));
-        std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, std::ref(active));
+        std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
+        std::thread image_thread(plot_events, integrationtime, mag, Nx, Ny, enable_tracking, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
