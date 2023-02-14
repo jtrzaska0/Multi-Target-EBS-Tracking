@@ -71,14 +71,14 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
                             T(mem, N);
                             Eigen::MatrixXd targets{T.currentTracks()};
 
-                            for (int i{0}; i < targets.rows(); ++i) {
-                                positions.push_back(targets(i, 0));
-                                positions.push_back(targets(i, 1));
-                            }
-
-                            // Break once all events have been used.
-                            if (t0 > events[4 * (nEvents - 1)])
+                            // Break once all events have been used and push last positions
+                            if (t0 > events[4 * (nEvents - 1)]) {
+                                for (int i{0}; i < targets.rows(); ++i) {
+                                    positions.push_back(targets(i, 0));
+                                    positions.push_back(targets(i, 1));
+                                }
                                 break;
+                            }
 
                             // Evolve tracks in time.
                             T.predict();
