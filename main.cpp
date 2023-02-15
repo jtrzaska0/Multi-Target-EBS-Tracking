@@ -551,40 +551,37 @@ void drive_stage(bool enable_stage, bool& active) {
         while (active) {
             if (!StagePositionsVectorQueue.empty()) {
                 std::vector<double> positions = StagePositionsVectorQueue.front();
-                if (!positions.empty()) {
-                    std::vector<double> xs;
-                    std::vector<double> ys;
-                    // split positions vector by every other element
-                    bool toggle = false;
-                    std::partition_copy(positions.begin(),
-                                        positions.end(),
-                                        std::back_inserter(xs),
-                                        std::back_inserter(ys),
-                                        [&toggle](int) { return toggle = !toggle; });
-                    double xs_med = median(xs, (int) xs.size());
-                    double ys_med = median(ys, (int) ys.size());
+                if (!positions.empty()) { // Stay in place if no object found
+                    if (positions[0] != -10) {
+                        std::vector<double> xs;
+                        std::vector<double> ys;
+                        // split positions vector by every other element
+                        bool toggle = false;
+                        std::partition_copy(positions.begin(),
+                                            positions.end(),
+                                            std::back_inserter(xs),
+                                            std::back_inserter(ys),
+                                            [&toggle](int) { return toggle = !toggle; });
+                        double xs_med = median(xs, (int) xs.size());
+                        double ys_med = median(ys, (int) ys.size());
 
-                    double x = ((double) nx / 2) - xs_med;
-                    double y = ((double) ny / 2) - ys_med;
+                        double x = xs_med - ((double) nx / 2);
+                        double y = ((double) ny / 2) - ys_med;
 
-                    if (xs_med == -10 || ys_med == -10) {
-                        x = ((double) nx / 2) ;
-                        y = ((double) ny / 2) ;
+                        double theta = get_theta(y, ny, hfovy);
+                        double phi = get_phi(x, nx, hfovx);
+                        double theta_prime = get_theta_prime(phi, theta, y0, r, theta_prime_error);
+                        double phi_prime = get_phi_prime(phi, theta, y0, r, phi_prime_error);
+
+                        float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
+                        float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
+                        printf("Moving stage to (%.2f, %.2f)\n", x, y);
+
+                        mtx.lock();
+                        kessler.set_position_speed_acceleration(2, pan_position, PAN_MAX_SPEED, PAN_MAX_ACC);
+                        kessler.set_position_speed_acceleration(3, tilt_position, TILT_MAX_SPEED, TILT_MAX_ACC);
+                        mtx.unlock();
                     }
-
-                    double theta = get_theta(y, ny, hfovy);
-                    double phi = get_phi(x, nx, hfovx);
-                    double theta_prime = get_theta_prime(phi, theta, y0, r, theta_prime_error);
-                    double phi_prime = get_phi_prime(phi, theta, y0, r, phi_prime_error);
-
-                    float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
-                    float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
-                    printf("Moving stage to (%.2f, %.2f)\n", ((double) nx / 2) - x, ((double) ny / 2) - y);
-
-                    mtx.lock();
-                    kessler.set_position_speed_acceleration(2, pan_position, PAN_MAX_SPEED, PAN_MAX_ACC);
-                    kessler.set_position_speed_acceleration(3, tilt_position, TILT_MAX_SPEED, TILT_MAX_ACC);
-                    mtx.unlock();
                 }
                 StagePositionsVectorQueue.pop();
             }
