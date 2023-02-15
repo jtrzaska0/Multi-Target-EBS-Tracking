@@ -15,17 +15,19 @@
 
 #include "ebs-tracking/Algorithm.hpp"
 
-#include <X11/Xlib.h>
 #include <X11/keysym.h>
 
 #include <kessler/stage.h>
+#include <kessler/tools/calibrator.h>
 
 static std::atomic_bool globalShutdown(false);
 
 std::queue<std::vector<double>> PlottingPacketQueue;
 std::queue<std::vector<double>> TrackingVectorQueue;
 std::queue<cv::Mat> CVMatrixQueue;
-std::queue<std::vector<double>> PositionsVectorQueue;
+std::queue<std::vector<double>> PlotPositionsVectorQueue;
+std::queue<std::vector<double>> StagePositionsVectorQueue;
+std::counting_semaphore<1> prepareStage(0);
 
 static void globalShutdownSignalHandler(int signal) {
     // Simply set the running flag to false on SIGTERM and SIGINT (CTRL+C) for global shutdown.
@@ -40,9 +42,19 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-// Read csv and process in "real time"
-// dt: integration time in ms
-// delay: time behind actual in ms
+double median(std::vector<double> a, int n) {
+    // Even number of elements
+    if (n % 2 == 0) {
+        nth_element(a.begin(),a.begin() + n / 2,a.end());
+        nth_element(a.begin(),a.begin() + (n - 1) / 2,a.end());
+        return (a[(n - 1) / 2] + a[n / 2]) / 2;
+    }
+    else {
+        nth_element(a.begin(),a.begin() + n / 2,a.end());
+        return a[n / 2];
+    }
+}
+
 void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
     if (enable_tracking) {
         while (active) {
@@ -88,19 +100,22 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
                             // Update eventIdx
                             mem += 4 * N;
                         }
-                        PositionsVectorQueue.push(positions);
+                        PlotPositionsVectorQueue.push(positions);
+                        StagePositionsVectorQueue.push(positions);
                         TrackingVectorQueue.pop();
                     } else {
                         positions.push_back(-10);
                         positions.push_back(-10);
-                        PositionsVectorQueue.push(positions);
+                        PlotPositionsVectorQueue.push(positions);
+                        StagePositionsVectorQueue.push(positions);
                         TrackingVectorQueue.pop();
                     }
                 }
                 catch (...) {
                     positions.push_back(-10);
                     positions.push_back(-10);
-                    PositionsVectorQueue.push(positions);
+                    PlotPositionsVectorQueue.push(positions);
+                    StagePositionsVectorQueue.push(positions);
                     TrackingVectorQueue.pop();
                 }
             }
@@ -120,11 +135,11 @@ void plot_events(double mag, int Nx, int Ny, bool enable_tracking, bool& active)
         }
         auto cvmat = CVMatrixQueue.front();
         if (enable_tracking) {
-            while (PositionsVectorQueue.empty() && active) {
+            while (PlotPositionsVectorQueue.empty() && active) {
                 // Do nothing until there is a corresponding positions vector
             }
 
-            auto positions = PositionsVectorQueue.front();
+            auto positions = PlotPositionsVectorQueue.front();
 
             for (int i=0; i < positions.size(); i += 2) {
                 int x = (int)positions[i];
@@ -148,7 +163,7 @@ void plot_events(double mag, int Nx, int Ny, bool enable_tracking, bool& active)
 
             }
 
-            PositionsVectorQueue.pop();
+            PlotPositionsVectorQueue.pop();
         }
 
 
@@ -441,16 +456,6 @@ int read_davis (int num_packets, bool enable_tracking, bool& active) {
     return (EXIT_SUCCESS);
 }
 
-bool key_is_pressed(KeySym ks) {
-    Display *dpy = XOpenDisplay(":0");
-    char keys_return[32];
-    XQueryKeymap(dpy, keys_return);
-    KeyCode kc2 = XKeysymToKeycode(dpy, ks);
-    bool isPressed = !!(keys_return[kc2 >> 3] & (1 << (kc2 & 7)));
-    XCloseDisplay(dpy);
-    return isPressed;
-}
-
 void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, bool& active) {
     printf("Press space to stop...\n");
     int i = 0;
@@ -465,7 +470,8 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
             printf("Plotting Queue: %zu\n", PlottingPacketQueue.size());
             printf("Event Vector Queue: %zu\n", TrackingVectorQueue.size());
             printf("Image Matrix Queue: %zu\n", CVMatrixQueue.size());
-            printf("Position Vector Queue: %zu\n\n\n", PositionsVectorQueue.size());
+            printf("Plot Position Queue: %zu\n", PlotPositionsVectorQueue.size());
+            printf("Stage Position Queue: %zu\n\n", StagePositionsVectorQueue.size());
         }
         i += 1;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -476,33 +482,7 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     imager.join();
 }
 
-int main(int argc, char* argv[]) {
-    /*
-     Simulate live data tracking using a CSV file containing event data.
-     A separate Matlab script can be used to generate GIFs of the result.
-
-     Args:
-          argv[1]: Device type: "xplorer" or "davis"
-          argv[2]: Integration time in milliseconds.
-          argv[3]: Number of event packets to aggregate.
-          argv[4]: Tracking: 0 for disabled, 1 for enabled
-          argv[5]: Magnification
-
-     Ret:
-          0
-     */
-
-    if (argc != 6) {
-        printf("Invalid number of arguments.\n");
-        return 0;
-    }
-
-    std::string device_type = {std::string(argv[1])};
-    double integrationtime = {std::stod(argv[2])};
-    int num_packets = {std::stoi(argv[3])};
-    bool enable_tracking = {std::stoi(argv[4])!=0};
-    double mag = {std::stod(argv[5])};
-
+void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, double mag, bool& active) {
     /**Create an Algorithm object here.**/
     // Matrix initializer
     // DBSCAN
@@ -532,9 +512,6 @@ int main(int argc, char* argv[]) {
     // Algo initializer
     DBSCAN_KNN algo(invals, k_model);
 
-
-    bool active = true;
-
     if (device_type == "xplorer") {
         int Nx = 640;
         int Ny = 480;
@@ -555,6 +532,109 @@ int main(int argc, char* argv[]) {
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
+}
+
+void drive_stage(bool enable_stage, bool& active) {
+    if (enable_stage) {
+        std::mutex mtx;
+        float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
+        double hfovx, hfovy, y0, r;
+        int nx, ny;
+        Stage kessler("192.168.50.1", 5520);
+        kessler.handshake();
+        std::cout << kessler.get_device_info().to_string();
+        std::thread pinger(ping, std::ref(kessler), std::ref(mtx), std::ref(active));
+        std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(std::ref(kessler));
+        printf("Enter approximate target distance in meters:\n");
+        std::cin >> r;
+        prepareStage.release();
+        while (active) {
+            if (!StagePositionsVectorQueue.empty()) {
+                std::vector<double> positions = StagePositionsVectorQueue.front();
+                if (!positions.empty()) {
+                    std::vector<double> xs;
+                    std::vector<double> ys;
+                    // split positions vector by every other element
+                    bool toggle = false;
+                    std::partition_copy(positions.begin(),
+                                        positions.end(),
+                                        std::back_inserter(xs),
+                                        std::back_inserter(ys),
+                                        [&toggle](int) { return toggle = !toggle; });
+                    double xs_med = median(xs, (int) xs.size());
+                    double ys_med = median(ys, (int) ys.size());
+
+                    double x = ((double) nx / 2) - xs_med;
+                    double y = ((double) ny / 2) - ys_med;
+
+                    if (xs_med == -10 || ys_med == -10) {
+                        x = ((double) nx / 2) ;
+                        y = ((double) ny / 2) ;
+                    }
+
+                    double theta = get_theta(y, ny, hfovy);
+                    double phi = get_phi(x, nx, hfovx);
+                    double theta_prime = get_theta_prime(phi, theta, y0, r, theta_prime_error);
+                    double phi_prime = get_phi_prime(phi, theta, y0, r, phi_prime_error);
+
+                    float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
+                    float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
+                    printf("Moving stage to (%.2f, %.2f)\n", ((double) nx / 2) - x, ((double) ny / 2) - y);
+
+                    mtx.lock();
+                    kessler.set_position_speed_acceleration(2, pan_position, PAN_MAX_SPEED, PAN_MAX_ACC);
+                    kessler.set_position_speed_acceleration(3, tilt_position, TILT_MAX_SPEED, TILT_MAX_ACC);
+                    mtx.unlock();
+                }
+                StagePositionsVectorQueue.pop();
+            }
+        }
+        pinger.join();
+    }
+    else {
+        prepareStage.release();
+        while (active) {
+            if (!StagePositionsVectorQueue.empty()) {
+                StagePositionsVectorQueue.pop();
+            }
+        }
+    }
+}
+
+int main(int argc, char* argv[]) {
+    /*
+     Simulate live data tracking using a CSV file containing event data.
+     A separate Matlab script can be used to generate GIFs of the result.
+
+     Args:
+          argv[1]: Device type: "xplorer" or "davis"
+          argv[2]: Integration time in milliseconds.
+          argv[3]: Number of event packets to aggregate.
+          argv[4]: Tracking: 0 for disabled, 1 for enabled
+          argv[5]: Stage: 0 for disabled, 1 for enabled
+          argv[7]: Magnification
+
+     Ret:
+          0
+     */
+
+    if (argc != 7) {
+        printf("Invalid number of arguments.\n");
+        return 1;
+    }
+
+    std::string device_type = {std::string(argv[1])};
+    double integrationtime = {std::stod(argv[2])};
+    int num_packets = {std::stoi(argv[3])};
+    bool enable_tracking = {std::stoi(argv[4])!=0};
+    bool enable_stage= {std::stoi(argv[5])!=0};
+    double mag = {std::stod(argv[6])};
+
+    bool active = true;
+    std::thread stage_thread(drive_stage, enable_stage, std::ref(active));
+    prepareStage.acquire();
+    launch_threads(device_type, integrationtime, num_packets, enable_tracking, mag, std::ref(active));
+    stage_thread.join();
 
     return 0;
 }
