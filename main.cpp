@@ -18,6 +18,8 @@
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 
+#include <kessler/stage.h>
+
 static std::atomic_bool globalShutdown(false);
 
 std::queue<std::vector<double>> PlottingPacketQueue;
