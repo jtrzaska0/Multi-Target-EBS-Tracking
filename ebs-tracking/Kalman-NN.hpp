@@ -121,17 +121,22 @@ class KalmanNN : public Tracker {
           */
           // Check if 'meas' is empty.
           if (meas.rows() == 0) {
+               std::vector<int> deregister_ids;
                // Deregister objects if they are lost.
                for (std::map<int, int>::iterator targ = numFramesLost.begin(); targ != numFramesLost.end(); ++targ) {
                     int ID {targ->first};
                     ++numFramesLost[ID];
-                    if (numFramesLost[ID] > maxNumFramesLost)
-                         deRegister(ID);
+                    if (numFramesLost[ID] > maxNumFramesLost) {
+                        deregister_ids.push_back(ID);
+                    }
                     else {
                          // Evolve the targets in time. Use the predicted state as the measurement.
                          filters[ID].autoUpdate();
                          targets[ID] = (filters[ID].getCurrState())({0,1}, 0);
                     }
+               }
+               for (int deregister_id : deregister_ids) {
+                   deRegister(deregister_id);
                }
 
                return;
@@ -157,7 +162,7 @@ class KalmanNN : public Tracker {
                // Find the minimum element in each row and sort the row indices by their min values.
                std::map<double, int> rmap;
                for (int i {0}; i < D.rows(); ++i)
-                    rmap[D.row(i).minCoeff()] = i;
+                   rmap[D.row(i).minCoeff()] = i;
 
                // Keep track of which rows and columns have been associated.
                std::set<int> activeRows;

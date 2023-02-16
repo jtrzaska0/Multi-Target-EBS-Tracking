@@ -1,5 +1,3 @@
-# define eigen_assert(X) do { if(!(X)) throw std::runtime_error(#X); } while(false);
-
 #include <libcaercpp/devices/dvxplorer.hpp>
 #include <libcaercpp/devices/davis.hpp>
 #include <libcaercpp/filters/dvs_noise.hpp>
@@ -61,27 +59,27 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
             while (!TrackingVectorQueue.empty() && active) {
                 auto events = TrackingVectorQueue.front();
                 std::vector<double> positions;
-                try {
-                    if (!events.empty()) {
-                        // The detector takes a pointer to events.
-                        double *mem{events.data()};
-                        // Starting time.
-                        double t0{events[0]};
+                if (!events.empty()) {
+                    // The detector takes a pointer to events.
+                    double *mem{events.data()};
+                    // Starting time.
+                    double t0{events[0]};
 
-                        // Keep sizes of the vectors in variables.
-                        int nEvents{(int) events.size() / 4};
-                        while (true) {
-                            // Read all events in one integration time.
-                            double t1{t0 + dt};
-                            int N{0};
-                            for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
-                                if (mem[4 * N] >= t1)
-                                    break;
+                    // Keep sizes of the vectors in variables.
+                    int nEvents{(int) events.size() / 4};
+                    while (true) {
+                        // Read all events in one integration time.
+                        double t1{t0 + dt};
+                        int N{0};
+                        for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
+                            if (mem[4 * N] >= t1)
+                                break;
 
-                            // Advance starting time.
-                            t0 = t1;
+                        // Advance starting time.
+                        t0 = t1;
 
-                            // Feed events to the detector/tracker.
+                        // Feed events to the detector/tracker.
+                        if (N > 0) {
                             T(mem, N);
                             Eigen::MatrixXd targets{T.currentTracks()};
 
@@ -93,31 +91,17 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
                                 }
                                 break;
                             }
-
                             // Evolve tracks in time.
                             T.predict();
 
                             // Update eventIdx
                             mem += 4 * N;
                         }
-                        PlotPositionsVectorQueue.push(positions);
-                        StagePositionsVectorQueue.push(positions);
-                        TrackingVectorQueue.pop();
-                    } else {
-                        positions.push_back(-10);
-                        positions.push_back(-10);
-                        PlotPositionsVectorQueue.push(positions);
-                        StagePositionsVectorQueue.push(positions);
-                        TrackingVectorQueue.pop();
                     }
                 }
-                catch (...) {
-                    positions.push_back(-10);
-                    positions.push_back(-10);
-                    PlotPositionsVectorQueue.push(positions);
-                    StagePositionsVectorQueue.push(positions);
-                    TrackingVectorQueue.pop();
-                }
+                PlotPositionsVectorQueue.push(positions);
+                StagePositionsVectorQueue.push(positions);
+                TrackingVectorQueue.pop();
             }
         }
     }
@@ -144,18 +128,16 @@ void plot_events(double mag, int Nx, int Ny, bool enable_tracking, bool& active)
             auto positions = PlotPositionsVectorQueue.front();
 
             if (!positions.empty()) {
-                if (positions[0] != -10) {
-                    std::vector<double> xs;
-                    std::vector<double> ys;
-                    bool toggle = false;
-                    std::partition_copy(positions.begin(),
-                                        positions.end(),
-                                        std::back_inserter(xs),
-                                        std::back_inserter(ys),
-                                        [&toggle](int) { return toggle = !toggle; });
-                    x_stage = (int) median(xs, (int) xs.size());
-                    y_stage = (int) median(ys, (int) ys.size());
-                }
+                std::vector<double> xs;
+                std::vector<double> ys;
+                bool toggle = false;
+                std::partition_copy(positions.begin(),
+                                    positions.end(),
+                                    std::back_inserter(xs),
+                                    std::back_inserter(ys),
+                                    [&toggle](int) { return toggle = !toggle; });
+                x_stage = (int) median(xs, (int) xs.size());
+                y_stage = (int) median(ys, (int) ys.size());
             }
 
             y_min = std::max(y_stage - y_increment, 0);
@@ -580,36 +562,34 @@ void drive_stage(bool enable_stage, bool& active) {
             if (!StagePositionsVectorQueue.empty()) {
                 std::vector<double> positions = StagePositionsVectorQueue.front();
                 if (!positions.empty()) { // Stay in place if no object found
-                    if (positions[0] != -10) {
-                        std::vector<double> xs;
-                        std::vector<double> ys;
-                        // split positions vector by every other element
-                        bool toggle = false;
-                        std::partition_copy(positions.begin(),
-                                            positions.end(),
-                                            std::back_inserter(xs),
-                                            std::back_inserter(ys),
-                                            [&toggle](int) { return toggle = !toggle; });
-                        double xs_med = median(xs, (int) xs.size());
-                        double ys_med = median(ys, (int) ys.size());
+                    std::vector<double> xs;
+                    std::vector<double> ys;
+                    // split positions vector by every other element
+                    bool toggle = false;
+                    std::partition_copy(positions.begin(),
+                                        positions.end(),
+                                        std::back_inserter(xs),
+                                        std::back_inserter(ys),
+                                        [&toggle](int) { return toggle = !toggle; });
+                    double xs_med = median(xs, (int) xs.size());
+                    double ys_med = median(ys, (int) ys.size());
 
-                        double x = xs_med - ((double) nx / 2);
-                        double y = ((double) ny / 2) - ys_med;
+                    double x = xs_med - ((double) nx / 2);
+                    double y = ((double) ny / 2) - ys_med;
 
-                        double theta = get_theta(y, ny, hfovy);
-                        double phi = get_phi(x, nx, hfovx);
-                        double theta_prime = get_theta_prime(phi, theta, y0, r, theta_prime_error);
-                        double phi_prime = get_phi_prime(phi, theta, y0, r, phi_prime_error);
+                    double theta = get_theta(y, ny, hfovy);
+                    double phi = get_phi(x, nx, hfovx);
+                    double theta_prime = get_theta_prime(phi, theta, y0, r, theta_prime_error);
+                    double phi_prime = get_phi_prime(phi, theta, y0, r, phi_prime_error);
 
-                        float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
-                        float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
-                        printf("Moving stage to (%.2f, %.2f)\n", x, y);
+                    float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
+                    float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
+                    printf("Moving stage to (%.2f, %.2f)\n", x, y);
 
-                        mtx.lock();
-                        kessler.set_position_speed_acceleration(2, pan_position, PAN_MAX_SPEED, PAN_MAX_ACC);
-                        kessler.set_position_speed_acceleration(3, tilt_position, TILT_MAX_SPEED, TILT_MAX_ACC);
-                        mtx.unlock();
-                    }
+                    mtx.lock();
+                    kessler.set_position_speed_acceleration(2, pan_position, PAN_MAX_SPEED, PAN_MAX_ACC);
+                    kessler.set_position_speed_acceleration(3, tilt_position, TILT_MAX_SPEED, TILT_MAX_ACC);
+                    mtx.unlock();
                 }
                 StagePositionsVectorQueue.pop();
             }
