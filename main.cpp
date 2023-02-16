@@ -139,7 +139,36 @@ void plot_events(double mag, int Nx, int Ny, bool enable_tracking, bool& active)
                 // Do nothing until there is a corresponding positions vector
             }
 
+            int x_stage, x_min, x_max;
+            int y_stage, y_min, y_max;
             auto positions = PlotPositionsVectorQueue.front();
+
+            if (!positions.empty()) {
+                if (positions[0] != -10) {
+                    std::vector<double> xs;
+                    std::vector<double> ys;
+                    bool toggle = false;
+                    std::partition_copy(positions.begin(),
+                                        positions.end(),
+                                        std::back_inserter(xs),
+                                        std::back_inserter(ys),
+                                        [&toggle](int) { return toggle = !toggle; });
+                    x_stage = (int) median(xs, (int) xs.size());
+                    y_stage = (int) median(ys, (int) ys.size());
+                }
+            }
+
+            y_min = std::max(y_stage - y_increment, 0);
+            x_min = std::max(x_stage - x_increment, 0);
+            y_max = std::min(y_stage + y_increment, Ny - 1);
+            x_max = std::min(x_stage + x_increment, Nx - 1);
+
+            cv::Point p1_stage(x_min, y_min);
+            cv::Point p2_stage(x_max, y_max);
+            int thickness = 2;
+            rectangle(cvmat, p1_stage, p2_stage,
+                      cv::Scalar(0, 0, 255),
+                      thickness, cv::LINE_8);
 
             for (int i=0; i < positions.size(); i += 2) {
                 int x = (int)positions[i];
@@ -148,14 +177,13 @@ void plot_events(double mag, int Nx, int Ny, bool enable_tracking, bool& active)
                     continue;
                 }
 
-                int y_min = std::max(y - y_increment, 0);
-                int x_min = std::max(x - x_increment, 0);
-                int y_max = std::min(y + y_increment, Ny - 1);
-                int x_max = std::min(x + x_increment, Nx - 1);
+                y_min = std::max(y - y_increment, 0);
+                x_min = std::max(x - x_increment, 0);
+                y_max = std::min(y + y_increment, Ny - 1);
+                x_max = std::min(x + x_increment, Nx - 1);
 
                 cv::Point p1(x_min, y_min);
                 cv::Point p2(x_max, y_max);
-                int thickness = 2;
                 rectangle(cvmat, p1, p2,
                           cv::Scalar(255, 0, 0),
                           thickness, cv::LINE_8);
