@@ -10,13 +10,14 @@ int main(int argc, char* argv[]) {
           argv[3]: Number of event packets to aggregate.
           argv[4]: Tracking: 0 for disabled, 1 for enabled
           argv[5]: Stage: 0 for disabled, 1 for enabled
-          argv[6]: Magnification
+          argv[6]: Stage command calculation method: "median"
+          argv[7]: Magnification
 
      Ret:
           0
      */
 
-    if (argc != 7) {
+    if (argc != 8) {
         printf("Invalid number of arguments.\n");
         return 1;
     }
@@ -26,12 +27,13 @@ int main(int argc, char* argv[]) {
     int num_packets = {std::stoi(argv[3])};
     bool enable_tracking = {std::stoi(argv[4])!=0};
     bool enable_stage= {std::stoi(argv[5])!=0};
-    double mag = {std::stod(argv[6])};
+    std::string position_method = {std::string(argv[6])};
+    double mag = {std::stod(argv[7])};
 
     bool active = true;
-    std::thread stage_thread(drive_stage, enable_stage, std::ref(active));
+    std::thread stage_thread(drive_stage, position_method, enable_stage, std::ref(active));
     prepareStage.acquire();
-    launch_threads(device_type, integrationtime, num_packets, enable_tracking, mag, std::ref(active));
+    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, mag, std::ref(active));
     stage_thread.join();
 
     return 0;

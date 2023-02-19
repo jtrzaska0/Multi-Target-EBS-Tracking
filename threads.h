@@ -355,7 +355,7 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
     }
 }
 
-void plot_events(double mag, int Nx, int Ny, bool enable_tracking, bool& active) {
+void plot_events(double mag, int Nx, int Ny, const std::string& position_method, bool enable_tracking, bool& active) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
 
@@ -376,16 +376,7 @@ void plot_events(double mag, int Nx, int Ny, bool enable_tracking, bool& active)
             auto positions = PlotPositionsVectorQueue.front();
 
             if (!positions.empty()) {
-                std::vector<double> xs;
-                std::vector<double> ys;
-                bool toggle = false;
-                std::partition_copy(positions.begin(),
-                                    positions.end(),
-                                    std::back_inserter(xs),
-                                    std::back_inserter(ys),
-                                    [&toggle](int) { return toggle = !toggle; });
-                x_stage = (int) median(xs, (int) xs.size());
-                y_stage = (int) median(ys, (int) ys.size());
+                std::tie(x_stage, y_stage) = get_position(position_method, positions);
             }
 
             y_min = std::max(y_stage - y_increment, 0);
@@ -478,7 +469,7 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     imager.join();
 }
 
-void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, double mag, bool& active) {
+void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double mag, bool& active) {
     /**Create an Algorithm object here.**/
     // Matrix initializer
     // DBSCAN
@@ -514,7 +505,7 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         std::thread writing_thread(read_xplorer, num_packets, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread image_thread(plot_events, mag, Nx, Ny, enable_tracking, std::ref(active));
+        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, enable_tracking, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
@@ -524,13 +515,13 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         std::thread writing_thread(read_davis, num_packets, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread image_thread(plot_events, mag, Nx, Ny, enable_tracking, std::ref(active));
+        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, enable_tracking, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
 }
 
-void drive_stage(bool enable_stage, bool& active) {
+void drive_stage(const std::string& position_method, bool enable_stage, bool& active) {
     if (enable_stage) {
         std::mutex mtx;
         float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
@@ -548,17 +539,8 @@ void drive_stage(bool enable_stage, bool& active) {
             if (!StagePositionsVectorQueue.empty()) {
                 std::vector<double> positions = StagePositionsVectorQueue.front();
                 if (!positions.empty()) { // Stay in place if no object found
-                    std::vector<double> xs;
-                    std::vector<double> ys;
-                    // split positions vector by every other element
-                    bool toggle = false;
-                    std::partition_copy(positions.begin(),
-                                        positions.end(),
-                                        std::back_inserter(xs),
-                                        std::back_inserter(ys),
-                                        [&toggle](int) { return toggle = !toggle; });
-                    double xs_med = median(xs, (int) xs.size());
-                    double ys_med = median(ys, (int) ys.size());
+                    double xs_med, ys_med;
+                    std::tie(xs_med, ys_med) = get_position(position_method, positions);
 
                     double x = xs_med - ((double) nx / 2);
                     double y = ((double) ny / 2) - ys_med;
