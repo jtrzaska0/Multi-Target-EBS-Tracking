@@ -411,6 +411,14 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
                           thickness, cv::LINE_8);
             }
 
+            cv::putText(cvmat,
+                        std::string("Objects: ") + std::to_string((int)(stage_positions.size()/2)), //text
+                        cv::Point(2,Ny-3),
+                        cv::FONT_HERSHEY_DUPLEX,
+                        0.5,
+                        CV_RGB(118, 185, 0),
+                        2);
+
             PlotPositionsVectorQueue.pop();
         }
 
