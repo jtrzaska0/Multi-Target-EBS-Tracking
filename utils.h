@@ -1,5 +1,8 @@
 #pragma once
 
+#include <armadillo>
+#include <mlpack.hpp>
+
 double median(std::vector<double> a, int n) {
     // Even number of elements
     if (n % 2 == 0) {
@@ -11,6 +14,27 @@ double median(std::vector<double> a, int n) {
         nth_element(a.begin(),a.begin() + n / 2,a.end());
         return a[n / 2];
     }
+}
+
+std::vector<double> get_dbscan_positions(std::vector<double> xs, std::vector<double> ys, double eps) {
+    std::vector<double> ret;
+    mlpack::dbscan::DBSCAN<> db(eps, 3);
+    arma::mat positions_mat;
+    positions_mat.zeros(2, xs.size());
+    for (int i = 0; i < xs.size(); i++) {
+        positions_mat(0, i) = xs[i];
+        positions_mat(1, i) = ys[i];
+    }
+    arma::Row<size_t> assignments;
+    arma::mat centroids;
+    db.Cluster(positions_mat, assignments, centroids);
+
+    int nclusters = (int)centroids.n_cols;
+    for (int i = 0; i < nclusters; i++) {
+        ret.push_back(centroids(0,i));
+        ret.push_back(centroids(1,i));
+    }
+    return ret;
 }
 
 std::vector<double> get_position(const std::string& method, std::vector<double> positions) {
@@ -28,6 +52,9 @@ std::vector<double> get_position(const std::string& method, std::vector<double> 
     if (method == "median") {
         ret.push_back(median(xs, size));
         ret.push_back(median(ys, size));
+    }
+    if (method == "dbscan") {
+        ret = get_dbscan_positions(xs, ys, 10);
     }
     return ret;
 }

@@ -10,7 +10,7 @@ int main(int argc, char* argv[]) {
           argv[3]: Number of event packets to aggregate.
           argv[4]: Tracking: 0 for disabled, 1 for enabled
           argv[5]: Stage: 0 for disabled, 1 for enabled
-          argv[6]: Stage command calculation method: "median"
+          argv[6]: Stage command calculation method: "median" or "dbscan"
           argv[7]: Magnification
 
      Ret:
