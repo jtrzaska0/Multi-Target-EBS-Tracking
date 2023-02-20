@@ -2,6 +2,7 @@
 
 #include <armadillo>
 #include <mlpack.hpp>
+#include <utility>
 
 double median(std::vector<double> a, int n) {
     // Even number of elements
@@ -16,15 +17,36 @@ double median(std::vector<double> a, int n) {
     }
 }
 
-std::vector<double> get_dbscan_positions(std::vector<double> xs, std::vector<double> ys, double eps) {
+arma::mat get_matrix(std::vector<double> xs, std::vector<double> ys) {
+    arma::mat ret;
+    ret.zeros(2, xs.size());
+    for (int i = 0; i < xs.size(); i++) {
+        ret(0, i) = xs[i];
+        ret(1, i) = ys[i];
+    }
+    return ret;
+}
+
+std::vector<double> get_kmeans_positions(const std::vector<double>& xs, std::vector<double> ys) {
+    std::vector<double> ret;
+    mlpack::KMeans<> k;
+    arma::mat positions_mat = get_matrix(xs, std::move(ys));
+    arma::Row<size_t> assignments;
+    arma::mat centroids;
+    int nclusters = std::min((int)xs.size(), 3);
+    k.Cluster(positions_mat, nclusters, assignments, centroids);
+
+    for (int i = 0; i < nclusters; i++) {
+        ret.push_back(centroids(0,i));
+        ret.push_back(centroids(1,i));
+    }
+    return ret;
+}
+
+std::vector<double> get_dbscan_positions(const std::vector<double>& xs, std::vector<double> ys, double eps) {
     std::vector<double> ret;
     mlpack::dbscan::DBSCAN<> db(eps, 3);
-    arma::mat positions_mat;
-    positions_mat.zeros(2, xs.size());
-    for (int i = 0; i < xs.size(); i++) {
-        positions_mat(0, i) = xs[i];
-        positions_mat(1, i) = ys[i];
-    }
+    arma::mat positions_mat = get_matrix(xs, std::move(ys));
     arma::Row<size_t> assignments;
     arma::mat centroids;
     db.Cluster(positions_mat, assignments, centroids);
@@ -57,6 +79,10 @@ std::vector<double> get_position(const std::string& method, std::vector<double> 
         }
         if (method == "dbscan") {
             ret = get_dbscan_positions(xs, ys, eps);
+            return ret;
+        }
+        if (method == "kmeans") {
+            ret = get_kmeans_positions(xs, ys);
             return ret;
         }
     }
