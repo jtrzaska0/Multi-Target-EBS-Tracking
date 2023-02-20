@@ -358,6 +358,7 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
 void plot_events(double mag, int Nx, int Ny, const std::string& position_method, bool enable_tracking, bool& active) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
+    int thickness = 2;
 
     cv::namedWindow("PLOT_EVENTS",
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
@@ -371,25 +372,25 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
                 // Do nothing until there is a corresponding positions vector
             }
 
-            int x_stage, x_min, x_max;
-            int y_stage, y_min, y_max;
+            int x_min, x_max, y_min, y_max;
             auto positions = PlotPositionsVectorQueue.front();
+            auto stage_positions = get_position(position_method, positions);
 
-            if (!positions.empty()) {
-                std::tie(x_stage, y_stage) = get_position(position_method, positions);
+            for (int i = 0; i < stage_positions.size(); i += 2) {
+                int x_stage = (int)stage_positions[i];
+                int y_stage = (int)stage_positions[i+1];
+                y_min = std::max(y_stage - y_increment, 0);
+                x_min = std::max(x_stage - x_increment, 0);
+                y_max = std::min(y_stage + y_increment, Ny - 1);
+                x_max = std::min(x_stage + x_increment, Nx - 1);
+
+                cv::Point p1_stage(x_min, y_min);
+                cv::Point p2_stage(x_max, y_max);
+
+                rectangle(cvmat, p1_stage, p2_stage,
+                          cv::Scalar(0, 0, 255),
+                          thickness, cv::LINE_8);
             }
-
-            y_min = std::max(y_stage - y_increment, 0);
-            x_min = std::max(x_stage - x_increment, 0);
-            y_max = std::min(y_stage + y_increment, Ny - 1);
-            x_max = std::min(x_stage + x_increment, Nx - 1);
-
-            cv::Point p1_stage(x_min, y_min);
-            cv::Point p2_stage(x_max, y_max);
-            int thickness = 2;
-            rectangle(cvmat, p1_stage, p2_stage,
-                      cv::Scalar(0, 0, 255),
-                      thickness, cv::LINE_8);
 
             for (int i=0; i < positions.size(); i += 2) {
                 int x = (int)positions[i];
@@ -539,11 +540,11 @@ void drive_stage(const std::string& position_method, bool enable_stage, bool& ac
             if (!StagePositionsVectorQueue.empty()) {
                 std::vector<double> positions = StagePositionsVectorQueue.front();
                 if (!positions.empty()) { // Stay in place if no object found
-                    double xs_med, ys_med;
-                    std::tie(xs_med, ys_med) = get_position(position_method, positions);
+                    std::vector<double> stage_positions = get_position(position_method, positions);
 
-                    double x = xs_med - ((double) nx / 2);
-                    double y = ((double) ny / 2) - ys_med;
+                    // Go to first position in list. Selecting between objects to be implemented later.
+                    double x = stage_positions[0] - ((double) nx / 2);
+                    double y = ((double) ny / 2) - stage_positions[1];
 
                     double theta = get_theta(y, ny, hfovy);
                     double phi = get_phi(x, nx, hfovx);

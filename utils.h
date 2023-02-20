@@ -1,7 +1,5 @@
 #pragma once
 
-#include <tuple>
-
 double median(std::vector<double> a, int n) {
     // Even number of elements
     if (n % 2 == 0) {
@@ -15,8 +13,8 @@ double median(std::vector<double> a, int n) {
     }
 }
 
-std::tuple<double, double> get_position(const std::string& method, std::vector<double> positions) {
-    std::tuple<double, double> ret = {0, 0};
+std::vector<double> get_position(const std::string& method, std::vector<double> positions) {
+    std::vector<double> ret;
     std::vector<double> xs;
     std::vector<double> ys;
     bool toggle = false;
@@ -28,7 +26,8 @@ std::tuple<double, double> get_position(const std::string& method, std::vector<d
     int size = (int)xs.size();
 
     if (method == "median") {
-        ret = {median(xs, size), median(ys, size)};
+        ret.push_back(median(xs, size));
+        ret.push_back(median(ys, size));
     }
     return ret;
 }
