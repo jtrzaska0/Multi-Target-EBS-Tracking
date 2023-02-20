@@ -39,22 +39,26 @@ std::vector<double> get_dbscan_positions(std::vector<double> xs, std::vector<dou
 
 std::vector<double> get_position(const std::string& method, std::vector<double> positions) {
     std::vector<double> ret;
-    std::vector<double> xs;
-    std::vector<double> ys;
-    bool toggle = false;
-    std::partition_copy(positions.begin(),
-                        positions.end(),
-                        std::back_inserter(xs),
-                        std::back_inserter(ys),
-                        [&toggle](int) { return toggle = !toggle; });
-    int size = (int)xs.size();
+    if (!positions.empty()) {
+        std::vector<double> xs;
+        std::vector<double> ys;
+        bool toggle = false;
+        std::partition_copy(positions.begin(),
+                            positions.end(),
+                            std::back_inserter(xs),
+                            std::back_inserter(ys),
+                            [&toggle](int) { return toggle = !toggle; });
+        int size = (int) xs.size();
 
-    if (method == "median") {
-        ret.push_back(median(xs, size));
-        ret.push_back(median(ys, size));
-    }
-    if (method == "dbscan") {
-        ret = get_dbscan_positions(xs, ys, 10);
+        if (method == "median") {
+            ret.push_back(median(xs, size));
+            ret.push_back(median(ys, size));
+            return ret;
+        }
+        if (method == "dbscan") {
+            ret = get_dbscan_positions(xs, ys, 10);
+            return ret;
+        }
     }
     return ret;
 }
