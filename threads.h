@@ -376,22 +376,6 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
             auto positions = PlotPositionsVectorQueue.front();
             auto stage_positions = get_position(position_method, positions, eps);
 
-            for (int i = 0; i < stage_positions.size(); i += 2) {
-                int x_stage = (int)stage_positions[i];
-                int y_stage = (int)stage_positions[i+1];
-                y_min = std::max(y_stage - y_increment, 0);
-                x_min = std::max(x_stage - x_increment, 0);
-                y_max = std::min(y_stage + y_increment, Ny - 1);
-                x_max = std::min(x_stage + x_increment, Nx - 1);
-
-                cv::Point p1_stage(x_min, y_min);
-                cv::Point p2_stage(x_max, y_max);
-
-                rectangle(cvmat, p1_stage, p2_stage,
-                          cv::Scalar(0, 0, 255),
-                          thickness, cv::LINE_8);
-            }
-
             for (int i=0; i < positions.size(); i += 2) {
                 int x = (int)positions[i];
                 int y = (int)positions[i+1];
@@ -409,8 +393,22 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
                 rectangle(cvmat, p1, p2,
                           cv::Scalar(255, 0, 0),
                           thickness, cv::LINE_8);
+            }
 
+            for (int i = 0; i < stage_positions.size(); i += 2) {
+                int x_stage = (int)stage_positions[i];
+                int y_stage = (int)stage_positions[i+1];
+                y_min = std::max(y_stage - y_increment, 0);
+                x_min = std::max(x_stage - x_increment, 0);
+                y_max = std::min(y_stage + y_increment, Ny - 1);
+                x_max = std::min(x_stage + x_increment, Nx - 1);
 
+                cv::Point p1_stage(x_min, y_min);
+                cv::Point p2_stage(x_max, y_max);
+
+                rectangle(cvmat, p1_stage, p2_stage,
+                          cv::Scalar(0, 0, 255),
+                          thickness, cv::LINE_8);
             }
 
             PlotPositionsVectorQueue.pop();

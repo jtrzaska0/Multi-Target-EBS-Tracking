@@ -1,5 +1,8 @@
 #pragma once
 
+#include <iostream>
+#include <cmath>
+
 #include <armadillo>
 #include <mlpack.hpp>
 #include <utility>
@@ -51,11 +54,67 @@ std::vector<double> get_dbscan_positions(const std::vector<double>& xs, std::vec
     arma::mat centroids;
     db.Cluster(positions_mat, assignments, centroids);
 
-    int nclusters = (int)centroids.n_cols;
-    for (int i = 0; i < nclusters; i++) {
+    int n_clusters = (int)centroids.n_cols;
+    for (int i = 0; i < n_clusters; i++) {
         ret.push_back(centroids(0,i));
         ret.push_back(centroids(1,i));
     }
+
+    // Process any position data that wasn't assigned.
+    // First, create a new dataset with only the unassigned positions.
+    // Then, loop through the list. If an unassigned point is within eps of another, add their median to the positions.
+    // Otherwise, add the position individually.
+    int n_unassigned = 0;
+    for (int i = 0; i < (int)assignments.n_elem; i++) {
+        if (assignments(i) == -1) {
+            n_unassigned += 1;
+        }
+    }
+
+    if (n_unassigned > 0) {
+        arma::mat unassigned;
+        unassigned.zeros(2, n_unassigned);
+        int j = 0;
+        for (int i = 0; i < (int) assignments.n_elem; i++) {
+            if (assignments(i) == -1) {
+                unassigned(0, j) = positions_mat(0, i);
+                unassigned(1, j) = positions_mat(1, i);
+                j += 1;
+            }
+        }
+
+        if (n_unassigned >= 2) {
+            mlpack::range::RangeSearch<> a(unassigned);
+            std::vector<std::vector<size_t>> neighbors;
+            std::vector<std::vector<double>> distances;
+            mlpack::math::Range r(0.0, eps);
+            a.Search(r, neighbors, distances);
+            for (int i = 0; i < neighbors.size(); i++) {
+                // Add the point to the list if it has no neighbors
+                if (neighbors[i].empty()) {
+                    ret.push_back(unassigned(0,i));
+                    ret.push_back(unassigned(1,i));
+                }
+                // Add the median of the point and its neighbors to the list
+                else {
+                    std::vector<double> neighbor_x;
+                    std::vector<double> neighbor_y;
+                    for (auto ind:neighbors[i]) {
+                        neighbor_x.push_back(unassigned(0,(int)ind));
+                        neighbor_y.push_back(unassigned(1,(int)ind));
+                    }
+                    ret.push_back(median(neighbor_x, (int)neighbor_x.size()));
+                    ret.push_back(median(neighbor_y, (int)neighbor_y.size()));
+                }
+            }
+        }
+
+        if (n_unassigned == 1) {
+            ret.push_back(unassigned(0, 0));
+            ret.push_back(unassigned(1, 0));
+        }
+    }
+
     return ret;
 }
 
