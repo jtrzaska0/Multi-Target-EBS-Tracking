@@ -37,7 +37,7 @@ std::vector<double> get_dbscan_positions(std::vector<double> xs, std::vector<dou
     return ret;
 }
 
-std::vector<double> get_position(const std::string& method, std::vector<double> positions) {
+std::vector<double> get_position(const std::string& method, std::vector<double> positions, double eps) {
     std::vector<double> ret;
     if (!positions.empty()) {
         std::vector<double> xs;
@@ -56,7 +56,7 @@ std::vector<double> get_position(const std::string& method, std::vector<double> 
             return ret;
         }
         if (method == "dbscan") {
-            ret = get_dbscan_positions(xs, ys, 10);
+            ret = get_dbscan_positions(xs, ys, eps);
             return ret;
         }
     }

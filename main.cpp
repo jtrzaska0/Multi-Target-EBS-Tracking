@@ -11,13 +11,14 @@ int main(int argc, char* argv[]) {
           argv[4]: Tracking: 0 for disabled, 1 for enabled
           argv[5]: Stage: 0 for disabled, 1 for enabled
           argv[6]: Stage command calculation method: "median" or "dbscan"
-          argv[7]: Magnification
+          argv[7]: epsilon for mlpack clustering
+          argv[8]: Magnification
 
      Ret:
           0
      */
 
-    if (argc != 8) {
+    if (argc != 9) {
         printf("Invalid number of arguments.\n");
         return 1;
     }
@@ -28,12 +29,13 @@ int main(int argc, char* argv[]) {
     bool enable_tracking = {std::stoi(argv[4])!=0};
     bool enable_stage= {std::stoi(argv[5])!=0};
     std::string position_method = {std::string(argv[6])};
-    double mag = {std::stod(argv[7])};
+    double eps = {std::stod(argv[7])};
+    double mag = {std::stod(argv[8])};
 
     bool active = true;
-    std::thread stage_thread(drive_stage, position_method, enable_stage, std::ref(active));
+    std::thread stage_thread(drive_stage, position_method, eps, enable_stage, std::ref(active));
     prepareStage.acquire();
-    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, mag, std::ref(active));
+    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, mag, std::ref(active));
     stage_thread.join();
 
     return 0;
