@@ -1,4 +1,4 @@
-#include "ebs-tracking/Algorithm.hpp"
+#include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
 
 int main(int argc, char* argv[]) {
