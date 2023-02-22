@@ -13,12 +13,14 @@ int main(int argc, char* argv[]) {
           argv[6]: Stage command calculation method: "median" or "dbscan"
           argv[7]: epsilon for mlpack clustering
           argv[8]: Magnification
+          argv[9]: Event logging: 0 for disabled, 1 for enabled
+          argv[10]: File for event CSV. Do not include the ".csv" extension
 
      Ret:
           0
      */
 
-    if (argc != 9) {
+    if (argc != 11) {
         printf("Invalid number of arguments.\n");
         return 1;
     }
@@ -27,15 +29,17 @@ int main(int argc, char* argv[]) {
     double integrationtime = {std::stod(argv[2])};
     int num_packets = {std::stoi(argv[3])};
     bool enable_tracking = {std::stoi(argv[4])!=0};
-    bool enable_stage= {std::stoi(argv[5])!=0};
+    bool enable_stage = {std::stoi(argv[5])!=0};
     std::string position_method = {std::string(argv[6])};
     double eps = {std::stod(argv[7])};
     double mag = {std::stod(argv[8])};
+    bool enable_event_log = {std::stoi(argv[9])!=0};
+    std::string event_file = {std::string(argv[10])};
 
     bool active = true;
     std::thread stage_thread(drive_stage, position_method, eps, enable_stage, std::ref(active));
     prepareStage.acquire();
-    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, mag, std::ref(active));
+    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, std::ref(active));
     stage_thread.join();
 
     return 0;

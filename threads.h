@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <queue>
 #include <semaphore>
@@ -355,10 +356,12 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
     }
 }
 
-void plot_events(double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool& active) {
+void plot_events(double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, bool& active) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
     int thickness = 2;
+    std::ofstream stageFile(event_file + "-stage.csv");
+    auto start = std::chrono::high_resolution_clock::now();
 
     cv::namedWindow("PLOT_EVENTS",
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
@@ -395,6 +398,8 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
                           thickness, cv::LINE_8);
             }
 
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> timestamp_ms = end - start;
             for (int i = 0; i < stage_positions.size(); i += 2) {
                 int x_stage = (int)stage_positions[i];
                 int y_stage = (int)stage_positions[i+1];
@@ -409,6 +414,11 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
                 rectangle(cvmat, p1_stage, p2_stage,
                           cv::Scalar(0, 0, 255),
                           thickness, cv::LINE_8);
+
+                if(enable_event_log)
+                    stageFile << timestamp_ms.count() << ","
+                              << x_stage << ","
+                              << y_stage << "\n";
             }
 
             cv::putText(cvmat,
@@ -422,32 +432,44 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
             PlotPositionsVectorQueue.pop();
         }
 
-
-        cv::imshow("PLOT_EVENTS", cvmat);
-        cv::waitKey(1);
+        if (active) {
+            cv::imshow("PLOT_EVENTS", cvmat);
+            cv::waitKey(1);
+        }
 
         CVMatrixQueue.pop();
     }
+    stageFile.close();
     cv::destroyWindow("PLOT_EVENTS");
 }
 
-void read_packets(int Nx, int Ny, bool& active) {
+void read_packets(int Nx, int Ny, bool enable_event_log, const std::string& event_file, bool& active) {
+    std::ofstream eventFile(event_file + "-events.csv");
     while (active) {
         while (!PlottingPacketQueue.empty() && active) {
             auto events = PlottingPacketQueue.front();
             cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
             if (!events.empty()) {
                 for (int i = 0; i < events.size(); i += 4) {
+                    double ts = events.at(i);
                     int x = (int) events.at(i + 1);
                     int y = (int) events.at(i + 2);
                     int pol = (int) events.at(i + 3);
                     cvEvents.at<cv::Vec3b>(y, x) = pol ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
+                    if(enable_event_log)
+                        eventFile << ts << ","
+                                  << x << ","
+                                  << y << ","
+                                  << pol << "\n";
                 }
+                if(enable_event_log)
+                    eventFile << "\n";
             }
             CVMatrixQueue.push(cvEvents);
             PlottingPacketQueue.pop();
         }
     }
+    eventFile.close();
 }
 
 void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, bool& active) {
@@ -476,7 +498,7 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     imager.join();
 }
 
-void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, double mag, bool& active) {
+void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, bool& active) {
     /**Create an Algorithm object here.**/
     // Matrix initializer
     // DBSCAN
@@ -510,9 +532,9 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         int Nx = 640;
         int Ny = 480;
         std::thread writing_thread(read_xplorer, num_packets, enable_tracking, std::ref(active));
-        std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
+        std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, std::ref(active));
+        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
@@ -520,9 +542,9 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         int Nx = 346;
         int Ny = 260;
         std::thread writing_thread(read_davis, num_packets, enable_tracking, std::ref(active));
-        std::thread plotting_thread(read_packets, Nx, Ny, std::ref(active));
+        std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, std::ref(active));
+        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
         running_thread.join();
     }
