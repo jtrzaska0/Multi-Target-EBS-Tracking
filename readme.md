@@ -18,3 +18,8 @@ Then, `mlpack` should be built and installed from according to the Github page: 
 ## conan
 1. `cd cmake-build-debug`
 2. `conan install .. -pr:b=default --build=missing`
+
+## Event Sensor Detection and Tracking
+1. Clone the Event Sensor Detection and Tracking repo into the working directory
+   * `cd ...\LiveTracking`
+   * `gh repo clone I2SL/Event-Sensor-Detection-and-Tracking`
