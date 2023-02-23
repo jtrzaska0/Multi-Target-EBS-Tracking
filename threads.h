@@ -23,8 +23,9 @@ static std::atomic_bool globalShutdown(false);
 std::queue<std::vector<double>> PlottingPacketQueue;
 std::queue<std::vector<double>> TrackingVectorQueue;
 std::queue<cv::Mat> CVMatrixQueue;
-std::queue<std::vector<double>> PlotPositionsVectorQueue;
-std::queue<std::vector<double>> StagePositionsVectorQueue;
+std::queue<std::vector<double>> PositionsVectorQueue;
+std::queue<arma::mat> PlotPositionsMatrixQueue;
+std::queue<arma::mat> StagePositionsMatrixQueue;
 std::counting_semaphore<1> prepareStage(0);
 
 static void globalShutdownSignalHandler(int signal) {
@@ -348,10 +349,29 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
                         }
                     }
                 }
-                PlotPositionsVectorQueue.push(positions);
-                StagePositionsVectorQueue.push(positions);
+                PositionsVectorQueue.push(positions);
                 TrackingVectorQueue.pop();
             }
+        }
+    }
+}
+
+void positions_vector_to_matrix(bool& active) {
+    while (active) {
+        while (!PositionsVectorQueue.empty()) {
+            auto positions = PositionsVectorQueue.front();
+            int n_positions = (int)(positions.size() / 2);
+            arma::mat positions_mat;
+            if (n_positions > 0) {
+                positions_mat.zeros(2, n_positions);
+                for(int i = 0; i < n_positions; i++) {
+                    positions_mat(0, i) = positions[2*i];
+                    positions_mat(1, i) = positions[2*i+1];
+                }
+            }
+            StagePositionsMatrixQueue.push(positions_mat);
+            PlotPositionsMatrixQueue.push(positions_mat);
+            PositionsVectorQueue.pop();
         }
     }
 }
@@ -371,17 +391,17 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
         }
         auto cvmat = CVMatrixQueue.front();
         if (enable_tracking) {
-            while (PlotPositionsVectorQueue.empty() && active) {
+            while (PlotPositionsMatrixQueue.empty() && active) {
                 // Do nothing until there is a corresponding positions vector
             }
 
             int x_min, x_max, y_min, y_max;
-            auto positions = PlotPositionsVectorQueue.front();
+            auto positions = PlotPositionsMatrixQueue.front();
             auto stage_positions = get_position(position_method, positions, eps);
 
-            for (int i=0; i < positions.size(); i += 2) {
-                int x = (int)positions[i];
-                int y = (int)positions[i+1];
+            for (int i=0; i < (int)positions.n_cols; i++) {
+                int x = (int)positions(0,i);
+                int y = (int)positions(1,i);
                 if (x == -10 || y == -10) {
                     continue;
                 }
@@ -400,9 +420,9 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
 
             auto end = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double, std::milli> timestamp_ms = end - start;
-            for (int i = 0; i < stage_positions.size(); i += 2) {
-                int x_stage = (int)stage_positions[i];
-                int y_stage = (int)stage_positions[i+1];
+            for (int i = 0; i < stage_positions.n_cols; i++) {
+                int x_stage = (int)stage_positions(0, i);
+                int y_stage = (int)stage_positions(1, i);
                 y_min = std::max(y_stage - y_increment, 0);
                 x_min = std::max(x_stage - x_increment, 0);
                 y_max = std::min(y_stage + y_increment, Ny - 1);
@@ -429,7 +449,7 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
                         CV_RGB(118, 185, 0),
                         2);
 
-            PlotPositionsVectorQueue.pop();
+            PlotPositionsMatrixQueue.pop();
         }
 
         if (active) {
@@ -472,7 +492,7 @@ void read_packets(int Nx, int Ny, bool enable_event_log, const std::string& even
     eventFile.close();
 }
 
-void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, bool& active) {
+void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, std::thread& matrix_writer, bool& active) {
     printf("Press space to stop...\n");
     int i = 0;
     while(active) {
@@ -486,8 +506,9 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
             printf("Plotting Queue: %zu\n", PlottingPacketQueue.size());
             printf("Event Vector Queue: %zu\n", TrackingVectorQueue.size());
             printf("Image Matrix Queue: %zu\n", CVMatrixQueue.size());
-            printf("Plot Position Queue: %zu\n", PlotPositionsVectorQueue.size());
-            printf("Stage Position Queue: %zu\n\n", StagePositionsVectorQueue.size());
+            printf("Matrix Writer Queue: %zu\n", PositionsVectorQueue.size());
+            printf("Plot Position Queue: %zu\n", PlotPositionsMatrixQueue.size());
+            printf("Stage Position Queue: %zu\n\n", StagePositionsMatrixQueue.size());
         }
         i += 1;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -496,6 +517,7 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     plotter.join();
     tracker.join();
     imager.join();
+    matrix_writer.join();
 }
 
 void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, bool& active) {
@@ -534,8 +556,9 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         std::thread writing_thread(read_xplorer, num_packets, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
+        std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
         std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
-        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
+        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), std::ref(active));
         running_thread.join();
     }
     else {
@@ -544,8 +567,9 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         std::thread writing_thread(read_davis, num_packets, enable_tracking, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
+        std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
         std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
-        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(active));
+        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), std::ref(active));
         running_thread.join();
     }
 }
@@ -565,14 +589,14 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
         std::cin >> r;
         prepareStage.release();
         while (active) {
-            if (!StagePositionsVectorQueue.empty()) {
-                std::vector<double> positions = StagePositionsVectorQueue.front();
-                if (!positions.empty()) { // Stay in place if no object found
-                    std::vector<double> stage_positions = get_position(position_method, positions, eps);
+            if (!StagePositionsMatrixQueue.empty()) {
+                auto positions = StagePositionsMatrixQueue.front();
+                if (positions.n_cols > 0) { // Stay in place if no object found
+                    auto stage_positions = get_position(position_method, positions, eps);
 
                     // Go to first position in list. Selecting between objects to be implemented later.
-                    double x = stage_positions[0] - ((double) nx / 2);
-                    double y = ((double) ny / 2) - stage_positions[1];
+                    double x = stage_positions(0,0) - ((double) nx / 2);
+                    double y = ((double) ny / 2) - stage_positions(0,1);
 
                     double theta = get_theta(y, ny, hfovy);
                     double phi = get_phi(x, nx, hfovx);
@@ -590,7 +614,7 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
                     kessler.set_position_speed_acceleration(3, tilt_position, TILT_MAX_SPEED, TILT_MAX_ACC);
                     mtx.unlock();
                 }
-                StagePositionsVectorQueue.pop();
+                StagePositionsMatrixQueue.pop();
             }
         }
         pinger.join();
@@ -598,8 +622,8 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
     else {
         prepareStage.release();
         while (active) {
-            if (!StagePositionsVectorQueue.empty()) {
-                StagePositionsVectorQueue.pop();
+            if (!StagePositionsMatrixQueue.empty()) {
+                StagePositionsMatrixQueue.pop();
             }
         }
     }
