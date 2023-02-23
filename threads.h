@@ -590,6 +590,7 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
         printf("Enter approximate target distance in meters:\n");
         std::cin >> r;
         prepareStage.release();
+        auto start = std::chrono::high_resolution_clock::now();
         while (active) {
             if (!StagePositionsMatrixQueue.empty()) {
                 auto positions = StagePositionsMatrixQueue.front();
@@ -607,14 +608,23 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
 
                     float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
                     float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
-                    printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / PI, phi_prime * 180 / PI);
-                    printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n", pan_position, end_pan-begin_pan, tilt_position, end_tilt-begin_tilt);
-                    printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
+                    auto end = std::chrono::high_resolution_clock::now();
+                    std::chrono::duration<double, std::milli> since_last = end - start;
 
-                    mtx.lock();
-                    kessler.set_position_speed_acceleration(2, pan_position, PAN_MAX_SPEED, PAN_MAX_ACC);
-                    kessler.set_position_speed_acceleration(3, tilt_position, TILT_MAX_SPEED, TILT_MAX_ACC);
-                    mtx.unlock();
+                    if (since_last.count() > 50) {
+                        printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / PI,
+                               phi_prime * 180 / PI);
+                        printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
+                               pan_position, end_pan - begin_pan, tilt_position, end_tilt - begin_tilt);
+                        printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
+
+                        mtx.lock();
+                        kessler.set_position_speed_acceleration(2, pan_position, (float)0.6*PAN_MAX_SPEED, PAN_MAX_ACC);
+                        kessler.set_position_speed_acceleration(3, tilt_position, (float)0.6*TILT_MAX_SPEED, TILT_MAX_ACC);
+                        mtx.unlock();
+
+                        start = std::chrono::high_resolution_clock::now();
+                    }
                 }
                 StagePositionsMatrixQueue.pop();
             }
