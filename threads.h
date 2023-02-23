@@ -26,6 +26,7 @@ std::queue<cv::Mat> CVMatrixQueue;
 std::queue<std::vector<double>> PositionsVectorQueue;
 std::queue<arma::mat> PlotPositionsMatrixQueue;
 std::queue<arma::mat> StagePositionsMatrixQueue;
+arma::mat previous_positions(2, 12, arma::fill::zeros);
 std::counting_semaphore<1> prepareStage(0);
 
 static void globalShutdownSignalHandler(int signal) {
@@ -397,7 +398,7 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
 
             int x_min, x_max, y_min, y_max;
             auto positions = PlotPositionsMatrixQueue.front();
-            auto stage_positions = get_position(position_method, positions, eps);
+            auto stage_positions = get_position(position_method, positions, previous_positions, eps);
 
             for (int i=0; i < (int)positions.n_cols; i++) {
                 int x = (int)positions(0,i);
@@ -592,11 +593,11 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
             if (!StagePositionsMatrixQueue.empty()) {
                 auto positions = StagePositionsMatrixQueue.front();
                 if (positions.n_cols > 0) { // Stay in place if no object found
-                    auto stage_positions = get_position(position_method, positions, eps);
+                    auto stage_positions = get_position(position_method, positions, previous_positions, eps);
 
                     // Go to first position in list. Selecting between objects to be implemented later.
                     double x = stage_positions(0,0) - ((double) nx / 2);
-                    double y = ((double) ny / 2) - stage_positions(0,1);
+                    double y = ((double) ny / 2) - stage_positions(1,0);
 
                     double theta = get_theta(y, ny, hfovy);
                     double phi = get_phi(x, nx, hfovx);

@@ -3,6 +3,15 @@
 #include <armadillo>
 #include <mlpack.hpp>
 
+arma::mat add_position_history(const arma::mat& position_history, arma::mat positions) {
+    //Shift columns to the right and populate first column with most recent position
+    arma::mat ret = arma::shift(position_history, +1, 1);
+    ret(0,0) = positions(0,0);
+    ret(1,0) = positions(1,0);
+
+    return ret;
+}
+
 arma::mat get_kmeans_positions(const arma::mat& positions_mat) {
     mlpack::KMeans<> k;
     arma::Row<size_t> assignments;
@@ -27,11 +36,17 @@ arma::mat get_dbscan_positions(const arma::mat& positions_mat, double eps) {
     return positions_mat;
 }
 
-arma::mat get_position(const std::string& method, const arma::mat& positions, double eps) {
+arma::mat get_position(const std::string& method, const arma::mat& positions, arma::mat& previous_positions, double eps) {
     arma::mat ret;
     if ((int)positions.n_cols > 0) {
         if (method == "median") {
             ret = arma::median(positions, 1);
+            return ret;
+        }
+        if (method == "median-history") {
+            arma::mat latest = arma::median(positions, 1);
+            previous_positions = add_position_history(previous_positions, latest);
+            ret = arma::mean(previous_positions, 1);
             return ret;
         }
         if (method == "dbscan") {
