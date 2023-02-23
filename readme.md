@@ -23,3 +23,6 @@ Then, `mlpack` should be built and installed from according to the Github page: 
 1. Clone the Event Sensor Detection and Tracking repo into the working directory
    * `cd ...\LiveTracking`
    * `gh repo clone I2SL/Event-Sensor-Detection-and-Tracking`
+
+## References
+1. https://gist.github.com/Yousha/3830712334ac30a90eb6041b932b68d7
