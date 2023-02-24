@@ -307,8 +307,11 @@ int read_davis (int num_packets, bool enable_tracking, bool& active) {
 
 void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
     if (enable_tracking) {
+        stop:
         while (active) {
-            while (!TrackingVectorQueue.empty() && active) {
+            while (!TrackingVectorQueue.empty()) {
+                if (!active)
+                    goto stop;
                 auto events = TrackingVectorQueue.front();
                 std::vector<double> positions;
                 if (!events.empty()) {
@@ -359,8 +362,11 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, bool&active) {
 }
 
 void positions_vector_to_matrix(bool& active) {
+    stop:
     while (active) {
         while (!PositionsVectorQueue.empty()) {
+            if (!active)
+                goto stop;
             auto positions = PositionsVectorQueue.front();
             int n_positions = (int)(positions.size() / 2);
             arma::mat positions_mat;
@@ -387,14 +393,19 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
 
     cv::namedWindow("PLOT_EVENTS",
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
+
     while (active) {
-        while (CVMatrixQueue.empty() && active) {
+        while (CVMatrixQueue.empty()) {
             // Do nothing until there is a matrix to process
+            if(!active)
+                goto stop;
         }
         auto cvmat = CVMatrixQueue.front();
         if (enable_tracking) {
-            while (PlotPositionsMatrixQueue.empty() && active) {
+            while (PlotPositionsMatrixQueue.empty()) {
                 // Do nothing until there is a corresponding positions vector
+                if(!active)
+                    goto stop;
             }
 
             int x_min, x_max, y_min, y_max;
@@ -453,14 +464,11 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
 
             PlotPositionsMatrixQueue.pop();
         }
-
-        if (active) {
-            cv::imshow("PLOT_EVENTS", cvmat);
-            cv::waitKey(1);
-        }
-
+        cv::imshow("PLOT_EVENTS", cvmat);
+        cv::waitKey(1);
         CVMatrixQueue.pop();
     }
+    stop:
     stageFile.close();
     cv::destroyWindow("PLOT_EVENTS");
 }
@@ -468,7 +476,9 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
 void read_packets(int Nx, int Ny, bool enable_event_log, const std::string& event_file, bool& active) {
     std::ofstream eventFile(event_file + "-events.csv");
     while (active) {
-        while (!PlottingPacketQueue.empty() && active) {
+        while (!PlottingPacketQueue.empty()) {
+            if (!active)
+                goto stop;
             auto events = PlottingPacketQueue.front();
             cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
             if (!events.empty()) {
@@ -491,6 +501,7 @@ void read_packets(int Nx, int Ny, bool enable_event_log, const std::string& even
             PlottingPacketQueue.pop();
         }
     }
+    stop:
     eventFile.close();
 }
 
@@ -593,6 +604,8 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
         auto start = std::chrono::high_resolution_clock::now();
         while (active) {
             if (!StagePositionsMatrixQueue.empty()) {
+                if (!active)
+                    goto stop_stage;
                 auto positions = StagePositionsMatrixQueue.front();
                 if (positions.n_cols > 0) { // Stay in place if no object found
                     auto stage_positions = get_position(position_method, positions, previous_positions_stage, eps);
@@ -629,6 +642,7 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
                 StagePositionsMatrixQueue.pop();
             }
         }
+        stop_stage:
         pinger.join();
     }
     else {
