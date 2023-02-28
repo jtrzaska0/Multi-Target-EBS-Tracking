@@ -1,0 +1,15 @@
+{
+  "PROGRAM_PARAMETERS": {
+    "DEVICE_TYPE": "xplorer",
+    "INTEGRATION_TIME_MS": 4,
+    "PACKET_NUMBER": 2,
+    "ENABLE_TRACKING": 1,
+    "ENABLE_STAGE": 0,
+    "STAGE_METHOD": "median-history",
+    "EPSILON": 50,
+    "MAGNIFICATION": 0.0645,
+    "ENABLE_LOGGING": 0,
+    "EVENT_FILEPATH": "/media/trevor/EBS/LiveTracking/test1"
+  },
+  "NOISE_FILTER": {}
+}
