@@ -1,7 +1,5 @@
 #include <fstream>
-
 #include <nlohmann/json.hpp>
-
 #include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
 
@@ -10,24 +8,24 @@ using json = nlohmann::json;
 int main(int argc, char* argv[]) {
     /*
 
-     Args:
+    Args:
         argv[1]: Absolute path to config JSON file
 
-     config.json:
-          DEVICE_TYPE: "xplorer" or "davis"
-          INTEGRATION_TIME_MS: Integration time in milliseconds.
-          PACKET_NUMBER: Number of event packets to aggregate.
-          ENABLE_TRACKING: true or false
-          ENABLE_STAGE: true or false
-          STAGE_METHOD: Stage command calculation method: "median", "dbscan", or "median-history"
-          EPSILON: epsilon for mlpack clustering
-          MAGNIFICATION: Magnification
-          ENABLE_LOGGING: true or false
-          EVENT_FILEPATH: File for event CSV. Do not include the ".csv" extension
+    config.json:
+        DEVICE_TYPE: "xplorer" or "davis"
+        INTEGRATION_TIME_MS: Integration time in milliseconds.
+        PACKET_NUMBER: Number of event packets to aggregate.
+        ENABLE_TRACKING: true or false
+        ENABLE_STAGE: true or false
+        STAGE_METHOD: Stage command calculation method: "median", "dbscan", or "median-history"
+        EPSILON: epsilon for mlpack clustering
+        MAGNIFICATION: Magnification
+        ENABLE_LOGGING: true or false
+        EVENT_FILEPATH: File for event CSV. Do not include the ".csv" extension
 
-     Ret:
-          0
-     */
+    Ret:
+        0
+    */
 
     if (argc != 2) {
         printf("Invalid number of arguments.\n");
@@ -52,9 +50,9 @@ int main(int argc, char* argv[]) {
     std::string event_file = params.value("EVENT_FILEPATH", "recording");
 
     bool active = true;
-    std::thread stage_thread(drive_stage, position_method, eps, enable_stage, std::ref(active));
+    std::thread stage_thread(drive_stage, position_method, eps, enable_stage, device_type, integrationtime, num_packets, mag, noise_params, std::ref(active));
     prepareStage.acquire();
-    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, std::ref(active));
+    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, false, std::ref(active));
     stage_thread.join();
 
     return 0;

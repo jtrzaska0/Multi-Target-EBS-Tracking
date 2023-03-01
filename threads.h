@@ -5,9 +5,7 @@
 #include <csignal>
 #include <queue>
 #include <semaphore>
-
 #include <nlohmann/json.hpp>
-
 #include <libcaercpp/devices/dvxplorer.hpp>
 #include <libcaercpp/devices/davis.hpp>
 #include <libcaercpp/filters/dvs_noise.hpp>
@@ -395,6 +393,7 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
     std::ofstream stageFile(event_file + "-stage.csv");
     auto start = std::chrono::high_resolution_clock::now();
 
+    cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS",
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
 
@@ -460,7 +459,21 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
 
             cv::putText(cvmat,
                         std::string("Objects: ") + std::to_string((int)(stage_positions.size()/2)), //text
-                        cv::Point(2,Ny-3),
+                        cv::Point((int)(0.05*Nx),(int)(0.95*Ny)),
+                        cv::FONT_HERSHEY_DUPLEX,
+                        0.5,
+                        CV_RGB(118, 185, 0),
+                        2);
+
+            int first_x = 0;
+            int first_y = 0;
+            if (stage_positions.n_cols > 0) {
+                first_x = (int) (stage_positions(0, 0) - ((float) Nx / 2));
+                first_y = (int) (((float) Ny / 2) - stage_positions(1, 0));
+            }
+            cv::putText(cvmat,
+                        std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) + std::string(")"), //text
+                        cv::Point((int)(0.80*Nx), (int)(0.95*Ny)),
                         cv::FONT_HERSHEY_DUPLEX,
                         0.5,
                         CV_RGB(118, 185, 0),
@@ -509,7 +522,7 @@ void read_packets(int Nx, int Ny, bool enable_event_log, const std::string& even
     eventFile.close();
 }
 
-void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, std::thread& matrix_writer, bool& active) {
+void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, std::thread& matrix_writer, bool wipe_stage, bool& active) {
     printf("Press space to stop...\n");
     int i = 0;
     while(active) {
@@ -527,6 +540,9 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
             printf("Plot Position Queue: %zu\n", PlotPositionsMatrixQueue.size());
             printf("Stage Position Queue: %zu\n\n", StagePositionsMatrixQueue.size());
         }
+        if (wipe_stage) {
+            clear_arma(StagePositionsMatrixQueue);
+        }
         i += 1;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -535,17 +551,21 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     tracker.join();
     imager.join();
     matrix_writer.join();
+
+    clear_arma(StagePositionsMatrixQueue);
+    clear_arma(PlotPositionsMatrixQueue);
+    clear_vector(TrackingVectorQueue);
+    clear_vector(PositionsVectorQueue);
+    clear_vector(PlottingPacketQueue);
+    clear_cv(CVMatrixQueue);
 }
 
-void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool& active) {
+void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool wipe_stage, bool& active) {
     /**Create an Algorithm object here.**/
     // Matrix initializer
     // DBSCAN
     Eigen::MatrixXd invals {Eigen::MatrixXd::Zero(1, 4)};
-/*     invals(0, 0) = 8;
-     invals(0, 1) = 8;
-     invals(0, 2) = 1.2;
-*/
+
     // Mean Shift
     invals(0,0) = 5.2;
     invals(0,1) = 9;
@@ -575,7 +595,7 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
         std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
         std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
-        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), std::ref(active));
+        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), wipe_stage, std::ref(active));
         running_thread.join();
     }
     else {
@@ -586,12 +606,12 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
         std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
         std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
-        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), std::ref(active));
+        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), wipe_stage, std::ref(active));
         running_thread.join();
     }
 }
 
-void drive_stage(const std::string& position_method, double eps, bool enable_stage, bool& active) {
+void drive_stage(const std::string& position_method, double eps, bool enable_stage, const std::string& device_type, double integrationtime, int num_packets, double mag, const json& noise_params, bool& active) {
     if (enable_stage) {
         std::mutex mtx;
         float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
@@ -601,7 +621,12 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
         kessler.handshake();
         std::cout << kessler.get_device_info().to_string();
         std::thread pinger(ping, std::ref(kessler), std::ref(mtx), std::ref(active));
+        // Temporarily open tracking window to aid in calibration
+        bool cal_active = true;
+        std::thread cal_thread(launch_threads, device_type, integrationtime, num_packets, true, position_method, eps, false, "~/", mag, noise_params, true, std::ref(cal_active));
         std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(std::ref(kessler));
+        cal_active = false;
+        cal_thread.join();
         printf("Enter approximate target distance in meters:\n");
         std::cin >> r;
         prepareStage.release();

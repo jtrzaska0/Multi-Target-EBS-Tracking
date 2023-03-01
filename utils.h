@@ -3,6 +3,21 @@
 #include <armadillo>
 #include <mlpack.hpp>
 
+void clear_arma(std::queue<arma::mat> &q) {
+    std::queue<arma::mat> empty;
+    std::swap(q, empty);
+}
+
+void clear_vector(std::queue<std::vector<double>> &q) {
+    std::queue<std::vector<double>> empty;
+    std::swap(q, empty);
+}
+
+void clear_cv(std::queue<cv::Mat> &q) {
+    std::queue<cv::Mat> empty;
+    std::swap(q, empty);
+}
+
 arma::mat add_position_history(const arma::mat& position_history, arma::mat positions) {
     //Shift columns to the right and populate first column with most recent position
     arma::mat ret = arma::shift(position_history, +1, 1);
