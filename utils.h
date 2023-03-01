@@ -18,6 +18,10 @@ void clear_cv(std::queue<cv::Mat> &q) {
     std::swap(q, empty);
 }
 
+double update_average(int prev_val, int new_val, int n_samples) {
+    return (prev_val*n_samples + new_val)/((double)n_samples + 1);
+}
+
 arma::mat add_position_history(const arma::mat& position_history, arma::mat positions) {
     //Shift columns to the right and populate first column with most recent position
     arma::mat ret = arma::shift(position_history, +1, 1);

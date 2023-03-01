@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
     bool active = true;
     std::thread stage_thread(drive_stage, position_method, eps, enable_stage, device_type, integrationtime, num_packets, mag, noise_params, std::ref(active));
     prepareStage.acquire();
-    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, false, std::ref(active));
+    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, false, false, std::ref(active));
     stage_thread.join();
 
     return 0;

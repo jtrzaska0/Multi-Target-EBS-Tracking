@@ -386,10 +386,13 @@ void positions_vector_to_matrix(bool& active) {
     }
 }
 
-void plot_events(double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, bool& active) {
+void plot_events(double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, bool report_average, bool& active) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
     int thickness = 2;
+    int n_samples = 0;
+    int prev_x = 0;
+    int prev_y = 0;
     std::ofstream stageFile(event_file + "-stage.csv");
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -468,8 +471,15 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
             int first_x = 0;
             int first_y = 0;
             if (stage_positions.n_cols > 0) {
+                n_samples += 1;
                 first_x = (int) (stage_positions(0, 0) - ((float) Nx / 2));
                 first_y = (int) (((float) Ny / 2) - stage_positions(1, 0));
+                if (report_average) {
+                    first_x = (int)update_average(prev_x, first_x, n_samples);
+                    first_y = (int)update_average(prev_y, first_y, n_samples);
+                    if (n_samples > 500)
+                        n_samples = 0;
+                }
             }
             cv::putText(cvmat,
                         std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) + std::string(")"), //text
@@ -479,6 +489,8 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
                         CV_RGB(118, 185, 0),
                         2);
 
+            prev_x = first_x;
+            prev_y = first_y;
             PlotPositionsMatrixQueue.pop();
         }
         cv::imshow("PLOT_EVENTS", cvmat);
@@ -560,7 +572,7 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     clear_cv(CVMatrixQueue);
 }
 
-void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool wipe_stage, bool& active) {
+void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool wipe_stage, bool report_average, bool& active) {
     /**Create an Algorithm object here.**/
     // Matrix initializer
     // DBSCAN
@@ -594,7 +606,7 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
         std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
-        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
+        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), wipe_stage, std::ref(active));
         running_thread.join();
     }
@@ -605,7 +617,7 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
         std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
         std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
-        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
+        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
         std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), wipe_stage, std::ref(active));
         running_thread.join();
     }
@@ -623,7 +635,7 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
         std::thread pinger(ping, std::ref(kessler), std::ref(mtx), std::ref(active));
         // Temporarily open tracking window to aid in calibration
         bool cal_active = true;
-        std::thread cal_thread(launch_threads, device_type, integrationtime, num_packets, true, position_method, eps, false, "~/", mag, noise_params, true, std::ref(cal_active));
+        std::thread cal_thread(launch_threads, device_type, integrationtime, num_packets, true, position_method, eps, false, "~/", mag, noise_params, true, true, std::ref(cal_active));
         std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(std::ref(kessler));
         cal_active = false;
         cal_thread.join();
