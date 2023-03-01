@@ -627,6 +627,8 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
     if (enable_stage) {
         std::mutex mtx;
         float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
+        float prev_pan_position = 0;
+        float prev_tilt_position = 0;
         double hfovx, hfovy, y0, r;
         int nx, ny;
         Stage kessler("192.168.50.1", 5520);
@@ -665,7 +667,9 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
                     auto end = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double, std::milli> since_last = end - start;
 
-                    if (since_last.count() > 50) {
+                    bool move = move_stage(pan_position, prev_pan_position, tilt_position, prev_tilt_position);
+
+                    if (since_last.count() > 50 && move) {
                         printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / PI,
                                phi_prime * 180 / PI);
                         printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
@@ -676,6 +680,9 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
                         kessler.set_position_speed_acceleration(2, pan_position, (float)0.6*PAN_MAX_SPEED, PAN_MAX_ACC);
                         kessler.set_position_speed_acceleration(3, tilt_position, (float)0.6*TILT_MAX_SPEED, TILT_MAX_ACC);
                         mtx.unlock();
+
+                        prev_pan_position = pan_position;
+                        prev_tilt_position = tilt_position;
 
                         start = std::chrono::high_resolution_clock::now();
                     }

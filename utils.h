@@ -22,6 +22,14 @@ double update_average(int prev_val, int new_val, int n_samples) {
     return (prev_val*n_samples + new_val)/((double)n_samples + 1);
 }
 
+bool move_stage(float pan_position, float prev_pan_position, float tilt_position, float prev_tilt_position) {
+    float pan_change = abs((pan_position - prev_pan_position)/prev_pan_position);
+    float tilt_change = abs((tilt_position - prev_tilt_position)/prev_tilt_position);
+    if (pan_change > 0.1 || tilt_change > 0.1)
+        return true;
+    return false;
+}
+
 arma::mat add_position_history(const arma::mat& position_history, arma::mat positions) {
     //Shift columns to the right and populate first column with most recent position
     arma::mat ret = arma::shift(position_history, +1, 1);
