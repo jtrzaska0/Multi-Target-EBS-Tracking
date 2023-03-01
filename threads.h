@@ -6,6 +6,8 @@
 #include <queue>
 #include <semaphore>
 
+#include <nlohmann/json.hpp>
+
 #include <libcaercpp/devices/dvxplorer.hpp>
 #include <libcaercpp/devices/davis.hpp>
 #include <libcaercpp/filters/dvs_noise.hpp>
@@ -17,6 +19,8 @@
 #include <kessler/tools/calibrator.h>
 
 #include "utils.h"
+
+using json = nlohmann::json;
 
 static std::atomic_bool globalShutdown(false);
 
@@ -43,7 +47,7 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer (int num_packets, bool enable_tracking, bool& active) {
+int read_xplorer (int num_packets, bool enable_tracking, const json& noise_params, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -96,18 +100,18 @@ int read_xplorer (int num_packets, bool enable_tracking, bool& active) {
     // Add full-sized software filter to reduce DVS noise.
     libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(xplorer_info.dvsSizeX, xplorer_info.dvsSizeY);
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, 2);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, 8);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, 2000);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, noise_params.value("CAER_BACKGROUND_ACTIVITY_TWO_LEVELS", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, noise_params.value("CAER_BACKGROUND_ACTIVITY_CHECK_POLARITY", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MIN", 2));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MAX", 8));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, noise_params.value("CAER_BACKGROUND_ACTIVITY_TIME", 2000));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, noise_params.value("CAER_BACKGROUND_ACTIVITY_ENABLE", true));
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, 200);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, noise_params.value("CAER_REFRACTORY_PERIOD_TIME", 200));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, noise_params.value("CAER_REFRACTORY_PERIOD_ENABLE", true));
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, noise_params.value("CAER_HOTPIXEL_ENABLE", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, noise_params.value("CAER_HOTPIXEL_LEARN", true));
 
     // Now let's get start getting some data from the device. We just loop in blocking mode,
     // no notification needed regarding new events. The shutdown notification, for example if
@@ -166,7 +170,7 @@ int read_xplorer (int num_packets, bool enable_tracking, bool& active) {
     return (EXIT_SUCCESS);
 }
 
-int read_davis (int num_packets, bool enable_tracking, bool& active) {
+int read_davis (int num_packets, bool enable_tracking, const json& noise_params, bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -218,28 +222,28 @@ int read_davis (int num_packets, bool enable_tracking, bool& active) {
 
     // Enable hardware filters if present.
     if (davis_info.dvsHasBackgroundActivityFilter) {
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME, 8);
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY, true);
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME, noise_params.value("DAVIS_BACKGROUND_ACTIVITY_TIME", 8));
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY, noise_params.value("DAVIS_BACKGROUND_ACTIVITY", true));
 
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD_TIME, 1);
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD, true);
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD_TIME, noise_params.value("DAVIS_REFRACTORY_PERIOD_TIME", 1));
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD, noise_params.value("DAVIS_REFRACTORY_PERIOD", true));
     }
 
     // Add full-sized software filter to reduce DVS noise.
     libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(davis_info.dvsSizeX, davis_info.dvsSizeY);
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, 2);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, 8);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, 2000);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, noise_params.value("CAER_BACKGROUND_ACTIVITY_TWO_LEVELS", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, noise_params.value("CAER_BACKGROUND_ACTIVITY_CHECK_POLARITY", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MIN", 2));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MAX", 8));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, noise_params.value("CAER_BACKGROUND_ACTIVITY_TIME", 2000));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, noise_params.value("CAER_BACKGROUND_ACTIVITY_ENABLE", true));
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, 200);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, noise_params.value("CAER_REFRACTORY_PERIOD_TIME", 200));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, noise_params.value("CAER_REFRACTORY_PERIOD_ENABLE", true));
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, true);
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, true);
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, noise_params.value("CAER_HOTPIXEL_ENABLE", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, noise_params.value("CAER_HOTPIXEL_LEARN", true));
 
     // Now let's get start getting some data from the device. We just loop in blocking mode,
     // no notification needed regarding new events. The shutdown notification, for example if
@@ -533,7 +537,7 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     matrix_writer.join();
 }
 
-void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, bool& active) {
+void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool& active) {
     /**Create an Algorithm object here.**/
     // Matrix initializer
     // DBSCAN
@@ -566,7 +570,7 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
     if (device_type == "xplorer") {
         int Nx = 640;
         int Ny = 480;
-        std::thread writing_thread(read_xplorer, num_packets, enable_tracking, std::ref(active));
+        std::thread writing_thread(read_xplorer, num_packets, enable_tracking, noise_params, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
         std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
@@ -577,7 +581,7 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
     else {
         int Nx = 346;
         int Ny = 260;
-        std::thread writing_thread(read_davis, num_packets, enable_tracking, std::ref(active));
+        std::thread writing_thread(read_davis, num_packets, enable_tracking, noise_params, std::ref(active));
         std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
         std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
         std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
