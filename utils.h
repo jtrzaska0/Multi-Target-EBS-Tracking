@@ -22,10 +22,10 @@ double update_average(int prev_val, int new_val, int n_samples) {
     return (prev_val*n_samples + new_val)/((double)n_samples + 1);
 }
 
-bool move_stage(float pan_position, float prev_pan_position, float tilt_position, float prev_tilt_position) {
+bool move_stage(float pan_position, float prev_pan_position, float tilt_position, float prev_tilt_position, double update) {
     float pan_change = abs((pan_position - prev_pan_position)/prev_pan_position);
     float tilt_change = abs((tilt_position - prev_tilt_position)/prev_tilt_position);
-    if (pan_change > 0.1 || tilt_change > 0.1)
+    if (pan_change > update || tilt_change > update)
         return true;
     return false;
 }

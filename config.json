@@ -6,6 +6,7 @@
     "ENABLE_TRACKING": true,
     "ENABLE_STAGE": false,
     "STAGE_METHOD": "median-history",
+    "STAGE_UPDATE": 0.02,
     "EPSILON": 50,
     "MAGNIFICATION": 0.0645,
     "ENABLE_LOGGING": false,

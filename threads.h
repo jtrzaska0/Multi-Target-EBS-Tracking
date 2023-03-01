@@ -625,7 +625,7 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
     }
 }
 
-void drive_stage(const std::string& position_method, double eps, bool enable_stage, const std::string& device_type, double integrationtime, int num_packets, double mag, const json& noise_params, bool& active) {
+void drive_stage(const std::string& position_method, double eps, bool enable_stage, const std::string& device_type, double integrationtime, int num_packets, double mag, const json& noise_params, double stage_update, bool& active) {
     if (enable_stage) {
         std::mutex mtx;
         float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
@@ -669,7 +669,7 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
                     auto end = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double, std::milli> since_last = end - start;
 
-                    bool move = move_stage(pan_position, prev_pan_position, tilt_position, prev_tilt_position);
+                    bool move = move_stage(pan_position, prev_pan_position, tilt_position, prev_tilt_position, stage_update);
 
                     if (since_last.count() > 50 && move) {
                         printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / PI,

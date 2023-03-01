@@ -18,6 +18,7 @@ int main(int argc, char* argv[]) {
         ENABLE_TRACKING: true or false
         ENABLE_STAGE: true or false
         STAGE_METHOD: Stage command calculation method: "median", "dbscan", or "median-history"
+        STAGE_UPDATE: Percent change required for stage to update positions
         EPSILON: epsilon for mlpack clustering
         MAGNIFICATION: Magnification
         ENABLE_LOGGING: true or false
@@ -48,9 +49,10 @@ int main(int argc, char* argv[]) {
     double mag = params.value("MAGNIFICATION", 0.05);
     bool enable_event_log = params.value("ENABLE_LOGGING", false);
     std::string event_file = params.value("EVENT_FILEPATH", "recording");
+    double stage_update = params.value("STAGE_UPDATE", 0.02);
 
     bool active = true;
-    std::thread stage_thread(drive_stage, position_method, eps, enable_stage, device_type, integrationtime, num_packets, mag, noise_params, std::ref(active));
+    std::thread stage_thread(drive_stage, position_method, eps, enable_stage, device_type, integrationtime, num_packets, mag, noise_params, stage_update, std::ref(active));
     prepareStage.acquire();
     launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, false, false, true, std::ref(active));
     stage_thread.join();
