@@ -619,7 +619,7 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
     }
 }
 
-void drive_stage(const std::string& position_method, double eps, bool enable_stage, const std::string& device_type, double integrationtime, int num_packets, double mag, const json& noise_params, double stage_update, bool& active) {
+void drive_stage(const std::string& position_method, double eps, bool enable_stage, double stage_update, bool& active) {
     if (enable_stage) {
         std::mutex mtx;
         float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
@@ -631,12 +631,7 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
         kessler.handshake();
         std::cout << kessler.get_device_info().to_string();
         std::thread pinger(ping, std::ref(kessler), std::ref(mtx), std::ref(active));
-        // Temporarily open tracking window to aid in calibration
-        bool cal_active = true;
-        std::thread cal_thread(launch_threads, device_type, integrationtime, num_packets, true, position_method, eps, false, "~/", mag, noise_params, true, false, std::ref(cal_active));
         std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(std::ref(kessler));
-        cal_active = false;
-        cal_thread.join();
         printf("Enter approximate target distance in meters:\n");
         std::cin >> r;
         prepareStage.release();

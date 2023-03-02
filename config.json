@@ -1,16 +1,18 @@
 {
   "PROGRAM_PARAMETERS": {
     "DEVICE_TYPE": "xplorer",
-    "INTEGRATION_TIME_MS": 4,
-    "PACKET_NUMBER": 2,
+    "INTEGRATION_TIME_MS": 2,
+    "PACKET_NUMBER": 1,
     "ENABLE_TRACKING": true,
     "ENABLE_STAGE": false,
     "STAGE_METHOD": "median-history",
     "STAGE_UPDATE": 0.02,
     "EPSILON": 50,
     "MAGNIFICATION": 0.0645,
-    "ENABLE_LOGGING": false,
-    "EVENT_FILEPATH": "~/data/test"
+    "ENABLE_LOGGING": true,
+    "EVENT_FILEPATH": "~/data/test",
+    "REPORT_AVERAGE": false,
+    "VERBOSE": false
   },
   "NOISE_FILTER": {
     "DAVIS_BACKGROUND_ACTIVITY_TIME": 8,

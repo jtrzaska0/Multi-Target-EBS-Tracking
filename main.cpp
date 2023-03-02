@@ -50,11 +50,13 @@ int main(int argc, char* argv[]) {
     bool enable_event_log = params.value("ENABLE_LOGGING", false);
     std::string event_file = params.value("EVENT_FILEPATH", "recording");
     double stage_update = params.value("STAGE_UPDATE", 0.02);
+    bool report_average = params.value("REPORT_AVERAGE", false);
+    bool verbose = params.value("VERBOSE", false);
 
     bool active = true;
-    std::thread stage_thread(drive_stage, position_method, eps, enable_stage, device_type, integrationtime, num_packets, mag, noise_params, stage_update, std::ref(active));
+    std::thread stage_thread(drive_stage, position_method, eps, enable_stage, stage_update, std::ref(active));
     prepareStage.acquire();
-    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, false, true, std::ref(active));
+    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, report_average, verbose, std::ref(active));
     stage_thread.join();
 
     return 0;
