@@ -3,21 +3,6 @@
 #include <armadillo>
 #include <mlpack.hpp>
 
-void clear_arma(std::queue<arma::mat> &q) {
-    std::queue<arma::mat> empty;
-    std::swap(q, empty);
-}
-
-void clear_vector(std::queue<std::vector<double>> &q) {
-    std::queue<std::vector<double>> empty;
-    std::swap(q, empty);
-}
-
-void clear_cv(std::queue<cv::Mat> &q) {
-    std::queue<cv::Mat> empty;
-    std::swap(q, empty);
-}
-
 double update_average(int prev_val, int new_val, int n_samples) {
     return (prev_val*n_samples + new_val)/((double)n_samples + 1);
 }
