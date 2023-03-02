@@ -22,7 +22,7 @@
 using json = nlohmann::json;
 
 static std::atomic_bool globalShutdown(false);
-const int buffer_size = 20;
+const int buffer_size = 5;
 
 boost::circular_buffer<std::vector<double>> PlottingPacketQueue(buffer_size);
 boost::circular_buffer<std::vector<double>> TrackingVectorQueue(buffer_size);
