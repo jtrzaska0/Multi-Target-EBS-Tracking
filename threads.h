@@ -495,8 +495,10 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
             prev_y = first_y;
             PlotPositionsMatrixQueue.pop_front();
         }
-        cv::imshow("PLOT_EVENTS", cvmat);
-        cv::waitKey(1);
+        if (cvmat.rows > 0 && cvmat.cols > 0 ) {
+            cv::imshow("PLOT_EVENTS", cvmat);
+            cv::waitKey(1);
+        }
         CVMatrixQueue.pop_front();
     }
     stop:
