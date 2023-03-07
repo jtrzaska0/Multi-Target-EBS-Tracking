@@ -23,6 +23,9 @@ int main(int argc, char* argv[]) {
         MAGNIFICATION: Magnification
         ENABLE_LOGGING: true or false
         EVENT_FILEPATH: File for event CSV. Do not include the ".csv" extension
+        VERBOSE: Print queue sizes, true or false.
+        BUFFER_SIZE: Number of elements in circular buffer
+        HISTORY_SIZE: Number of previous positions to average in history
 
     Ret:
         0
@@ -52,11 +55,15 @@ int main(int argc, char* argv[]) {
     double stage_update = params.value("STAGE_UPDATE", 0.02);
     bool report_average = params.value("REPORT_AVERAGE", false);
     bool verbose = params.value("VERBOSE", false);
+    const int buffer_size = params.value("BUFFER_SIZE", 100);
+    const int history_size = params.value("HISTORY_SIZE", 12);
+
+    Buffers buffers(buffer_size, history_size);
 
     bool active = true;
-    std::thread stage_thread(drive_stage, position_method, eps, enable_stage, stage_update, std::ref(active));
+    std::thread stage_thread(drive_stage, std::ref(buffers), position_method, eps, enable_stage, stage_update, std::ref(active));
     prepareStage.acquire();
-    launch_threads(device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, report_average, verbose, std::ref(active));
+    launch_threads(buffers, device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, report_average, verbose, std::ref(active));
     stage_thread.join();
 
     return 0;

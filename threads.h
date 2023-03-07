@@ -22,17 +22,31 @@
 using json = nlohmann::json;
 
 static std::atomic_bool globalShutdown(false);
-const int buffer_size = 5;
-
-boost::circular_buffer<std::vector<double>> PlottingPacketQueue(buffer_size);
-boost::circular_buffer<std::vector<double>> TrackingVectorQueue(buffer_size);
-boost::circular_buffer<cv::Mat> CVMatrixQueue(buffer_size);
-boost::circular_buffer<std::vector<double>> PositionsVectorQueue(buffer_size);
-boost::circular_buffer<arma::mat> PlotPositionsMatrixQueue(buffer_size);
-boost::circular_buffer<arma::mat> StagePositionsMatrixQueue(buffer_size);
-arma::mat previous_positions_plot(2, 12, arma::fill::zeros);
-arma::mat previous_positions_stage(2, 12, arma::fill::zeros);
 std::counting_semaphore<1> prepareStage(0);
+
+class Buffers {
+    public:
+        boost::circular_buffer<std::vector<double>> PlottingPacketQueue;
+        boost::circular_buffer<std::vector<double>> TrackingVectorQueue;
+        boost::circular_buffer<cv::Mat> CVMatrixQueue;
+        boost::circular_buffer<std::vector<double>> PositionsVectorQueue;
+        boost::circular_buffer<arma::mat> PlotPositionsMatrixQueue;
+        boost::circular_buffer<arma::mat> StagePositionsMatrixQueue;
+        arma::mat previous_positions_plot;
+        arma::mat previous_positions_stage;
+        Buffers(const int buffer_size, const int history_size){
+            PlottingPacketQueue.set_capacity(buffer_size);
+            TrackingVectorQueue.set_capacity(buffer_size);
+            CVMatrixQueue.set_capacity(buffer_size);
+            PositionsVectorQueue.set_capacity(buffer_size);
+            PlotPositionsMatrixQueue.set_capacity(buffer_size);
+            StagePositionsMatrixQueue.set_capacity(buffer_size);
+            previous_positions_plot.set_size(2, history_size);
+            previous_positions_plot.fill(arma::fill::zeros);
+            previous_positions_stage.set_size(2, history_size);
+            previous_positions_stage.fill(arma::fill::zeros);
+        }
+};
 
 static void globalShutdownSignalHandler(int signal) {
     // Simply set the running flag to false on SIGTERM and SIGINT (CTRL+C) for global shutdown.
@@ -47,7 +61,7 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer (int num_packets, bool enable_tracking, const json& noise_params, const bool& active) {
+int read_xplorer (Buffers& buffers, int num_packets, bool enable_tracking, const json& noise_params, const bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -153,9 +167,9 @@ int read_xplorer (int num_packets, bool enable_tracking, const json& noise_param
                 processed += 1;
                 if (processed >= num_packets) {
                     if (enable_tracking) {
-                        TrackingVectorQueue.push_back(events);
+                        buffers.TrackingVectorQueue.push_back(events);
                     }
-                    PlottingPacketQueue.push_back(events);
+                    buffers.PlottingPacketQueue.push_back(events);
                     events.clear();
                     processed = 0;
                 }
@@ -170,7 +184,7 @@ int read_xplorer (int num_packets, bool enable_tracking, const json& noise_param
     return (EXIT_SUCCESS);
 }
 
-int read_davis (int num_packets, bool enable_tracking, const json& noise_params, const bool& active) {
+int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const json& noise_params, const bool& active) {
     // Install signal handler for global shutdown.
 #if defined(_WIN32)
     if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
@@ -292,9 +306,9 @@ int read_davis (int num_packets, bool enable_tracking, const json& noise_params,
                 processed += 1;
                 if (processed >= num_packets) {
                     if (enable_tracking) {
-                        TrackingVectorQueue.push_back(events);
+                        buffers.TrackingVectorQueue.push_back(events);
                     }
-                    PlottingPacketQueue.push_back(events);
+                    buffers.PlottingPacketQueue.push_back(events);
                     events.clear();
                     processed = 0;
                 }
@@ -309,16 +323,19 @@ int read_davis (int num_packets, bool enable_tracking, const json& noise_params,
     return (EXIT_SUCCESS);
 }
 
-void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, const bool&active) {
+void tracker (Buffers& buffers, double dt, DBSCAN_KNN T, bool enable_tracking, const bool&active) {
     if (enable_tracking) {
         stop:
         while (active) {
-            while (!TrackingVectorQueue.empty()) {
+            while (!buffers.TrackingVectorQueue.empty()) {
+                // double free or corruption (out)
                 if (!active)
                     goto stop;
-                auto events = TrackingVectorQueue.front();
+                auto events = buffers.TrackingVectorQueue.front();
                 std::vector<double> positions;
+                //double free or corruption (!prev)
                 if (!events.empty()) {
+                    //free(): invalid pointer
                     // The detector takes a pointer to events.
                     double *mem{events.data()};
                     // Starting time.
@@ -336,9 +353,9 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, const bool&active) 
 
                         // Advance starting time.
                         t0 = t1;
-
                         // Feed events to the detector/tracker.
                         if (N > 0) {
+                            //double free or corruption (!prev), double free or corruption (out), corrupted size vs. prev_size while consolidating
                             T(mem, N);
                             Eigen::MatrixXd targets{T.currentTracks()};
 
@@ -358,20 +375,21 @@ void tracker (double dt, DBSCAN_KNN T, bool enable_tracking, const bool&active) 
                         }
                     }
                 }
-                PositionsVectorQueue.push_back(positions);
-                TrackingVectorQueue.pop_front();
+                //double free or corruption (!prev), corrupted size vs. prev_size while consolidating, free(): invalid pointer
+                buffers.PositionsVectorQueue.push_back(positions);
+                buffers.TrackingVectorQueue.pop_front();
             }
         }
     }
 }
 
-void positions_vector_to_matrix(const bool& active) {
+void positions_vector_to_matrix(Buffers& buffers, const bool& active) {
     stop:
     while (active) {
-        while (!PositionsVectorQueue.empty()) {
+        while (!buffers.PositionsVectorQueue.empty()) {
             if (!active)
                 goto stop;
-            auto positions = PositionsVectorQueue.front();
+            auto positions = buffers.PositionsVectorQueue.front();
             int n_positions = (int)(positions.size() / 2);
             arma::mat positions_mat;
             if (n_positions > 0) {
@@ -381,14 +399,14 @@ void positions_vector_to_matrix(const bool& active) {
                     positions_mat(1, i) = positions[2*i+1];
                 }
             }
-            StagePositionsMatrixQueue.push_back(positions_mat);
-            PlotPositionsMatrixQueue.push_back(positions_mat);
-            PositionsVectorQueue.pop_front();
+            buffers.StagePositionsMatrixQueue.push_back(positions_mat);
+            buffers.PlotPositionsMatrixQueue.push_back(positions_mat);
+            buffers.PositionsVectorQueue.pop_front();
         }
     }
 }
 
-void plot_events(double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, bool report_average, const bool& active) {
+void plot_events(Buffers& buffers, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, bool report_average, const bool& active) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
     int thickness = 2;
@@ -403,22 +421,22 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
 
     while (active) {
-        while (CVMatrixQueue.empty()) {
+        while (buffers.CVMatrixQueue.empty()) {
             // Do nothing until there is a matrix to process
             if(!active)
                 goto stop;
         }
-        auto cvmat = CVMatrixQueue.front();
+        auto cvmat = buffers.CVMatrixQueue.front();
         if (enable_tracking) {
-            while (PlotPositionsMatrixQueue.empty()) {
+            while (buffers.PlotPositionsMatrixQueue.empty()) {
                 // Do nothing until there is a corresponding positions vector
                 if(!active)
                     goto stop;
             }
 
             int x_min, x_max, y_min, y_max;
-            auto positions = PlotPositionsMatrixQueue.front();
-            auto stage_positions = get_position(position_method, positions, previous_positions_plot, eps);
+            auto positions = buffers.PlotPositionsMatrixQueue.front();
+            auto stage_positions = get_position(position_method, positions, buffers.previous_positions_plot, eps);
 
             for (int i=0; i < (int)positions.n_cols; i++) {
                 int x = (int)positions(0,i);
@@ -493,26 +511,26 @@ void plot_events(double mag, int Nx, int Ny, const std::string& position_method,
 
             prev_x = first_x;
             prev_y = first_y;
-            PlotPositionsMatrixQueue.pop_front();
+            buffers.PlotPositionsMatrixQueue.pop_front();
         }
         if (cvmat.rows > 0 && cvmat.cols > 0 ) {
             cv::imshow("PLOT_EVENTS", cvmat);
             cv::waitKey(1);
         }
-        CVMatrixQueue.pop_front();
+        buffers.CVMatrixQueue.pop_front();
     }
     stop:
     stageFile.close();
     cv::destroyWindow("PLOT_EVENTS");
 }
 
-void read_packets(int Nx, int Ny, bool enable_event_log, const std::string& event_file, const bool& active) {
+void read_packets(Buffers& buffers, int Nx, int Ny, bool enable_event_log, const std::string& event_file, const bool& active) {
     std::ofstream eventFile(event_file + "-events.csv");
     while (active) {
-        while (!PlottingPacketQueue.empty()) {
+        while (!buffers.PlottingPacketQueue.empty()) {
             if (!active)
                 goto stop;
-            auto events = PlottingPacketQueue.front();
+            auto events = buffers.PlottingPacketQueue.front();
             cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
             if (!events.empty()) {
                 for (int i = 0; i < events.size(); i += 4) {
@@ -530,15 +548,15 @@ void read_packets(int Nx, int Ny, bool enable_event_log, const std::string& even
                 if(enable_event_log)
                     eventFile << "\n";
             }
-            CVMatrixQueue.push_back(cvEvents);
-            PlottingPacketQueue.pop_front();
+            buffers.CVMatrixQueue.push_back(cvEvents);
+            buffers.PlottingPacketQueue.pop_front();
         }
     }
     stop:
     eventFile.close();
 }
 
-void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, std::thread& matrix_writer, bool verbose, bool& active) {
+void runner(Buffers& buffers, std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, std::thread& matrix_writer, bool verbose, bool& active) {
     printf("Press space to stop...\n");
     int i = 0;
     while(active) {
@@ -550,12 +568,12 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
             if (verbose) {
                 printf("Queue Sizes:\n");
                 printf("------------\n");
-                printf("Plotting Queue: %zu\n", PlottingPacketQueue.size());
-                printf("Event Vector Queue: %zu\n", TrackingVectorQueue.size());
-                printf("Image Matrix Queue: %zu\n", CVMatrixQueue.size());
-                printf("Matrix Writer Queue: %zu\n", PositionsVectorQueue.size());
-                printf("Plot Position Queue: %zu\n", PlotPositionsMatrixQueue.size());
-                printf("Stage Position Queue: %zu\n\n", StagePositionsMatrixQueue.size());
+                printf("Plotting Queue: %zu\n", buffers.PlottingPacketQueue.size());
+                printf("Event Vector Queue: %zu\n", buffers.TrackingVectorQueue.size());
+                printf("Image Matrix Queue: %zu\n", buffers.CVMatrixQueue.size());
+                printf("Matrix Writer Queue: %zu\n", buffers.PositionsVectorQueue.size());
+                printf("Plot Position Queue: %zu\n", buffers.PlotPositionsMatrixQueue.size());
+                printf("Stage Position Queue: %zu\n\n", buffers.StagePositionsMatrixQueue.size());
             }
         }
         i += 1;
@@ -568,7 +586,7 @@ void runner(std::thread& reader, std::thread& plotter, std::thread& tracker, std
     matrix_writer.join();
 }
 
-void launch_threads(const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool report_average, bool verbose, bool& active) {
+void launch_threads(Buffers& buffers, const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool report_average, bool verbose, bool& active) {
     /**Create an Algorithm object here.**/
     // Matrix initializer
     // DBSCAN
@@ -598,28 +616,28 @@ void launch_threads(const std::string& device_type, double integrationtime, int 
     if (device_type == "xplorer") {
         int Nx = 640;
         int Ny = 480;
-        std::thread writing_thread(read_xplorer, num_packets, enable_tracking, noise_params, std::ref(active));
-        std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
-        std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
-        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
-        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), verbose, std::ref(active));
+        std::thread writing_thread(read_xplorer, std::ref(buffers), num_packets, enable_tracking, noise_params, std::ref(active));
+        std::thread plotting_thread(read_packets, std::ref(buffers), Nx, Ny, enable_event_log, event_file, std::ref(active));
+        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, enable_tracking, std::ref(active));
+        std::thread matrix_thread(positions_vector_to_matrix, std::ref(buffers), std::ref(active));
+        std::thread image_thread(plot_events, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
+        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), verbose, std::ref(active));
         running_thread.join();
     }
     else {
         int Nx = 346;
         int Ny = 260;
-        std::thread writing_thread(read_davis, num_packets, enable_tracking, noise_params, std::ref(active));
-        std::thread plotting_thread(read_packets, Nx, Ny, enable_event_log, event_file, std::ref(active));
-        std::thread tracking_thread(tracker, integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread matrix_thread(positions_vector_to_matrix, std::ref(active));
-        std::thread image_thread(plot_events, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
-        std::thread running_thread(runner, std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), verbose, std::ref(active));
+        std::thread writing_thread(read_davis, std::ref(buffers), num_packets, enable_tracking, noise_params, std::ref(active));
+        std::thread plotting_thread(read_packets, std::ref(buffers), Nx, Ny, enable_event_log, event_file, std::ref(active));
+        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, enable_tracking, std::ref(active));
+        std::thread matrix_thread(positions_vector_to_matrix, std::ref(buffers), std::ref(active));
+        std::thread image_thread(plot_events, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
+        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), verbose, std::ref(active));
         running_thread.join();
     }
 }
 
-void drive_stage(const std::string& position_method, double eps, bool enable_stage, double stage_update, bool& active) {
+void drive_stage(Buffers& buffers, const std::string& position_method, double eps, bool enable_stage, double stage_update, bool& active) {
     if (enable_stage) {
         std::mutex mtx;
         float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
@@ -637,12 +655,12 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
         prepareStage.release();
         auto start = std::chrono::high_resolution_clock::now();
         while (active) {
-            if (!StagePositionsMatrixQueue.empty()) {
+            if (!buffers.StagePositionsMatrixQueue.empty()) {
                 if (!active)
                     goto stop_stage;
-                auto positions = StagePositionsMatrixQueue.front();
+                auto positions = buffers.StagePositionsMatrixQueue.front();
                 if (positions.n_cols > 0) { // Stay in place if no object found
-                    auto stage_positions = get_position(position_method, positions, previous_positions_stage, eps);
+                    auto stage_positions = get_position(position_method, positions, buffers.previous_positions_stage, eps);
 
                     // Go to first position in list. Selecting between objects to be implemented later.
                     double x = stage_positions(0,0) - ((double) nx / 2);
@@ -678,7 +696,7 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
                         start = std::chrono::high_resolution_clock::now();
                     }
                 }
-                StagePositionsMatrixQueue.pop_front();
+                buffers.StagePositionsMatrixQueue.pop_front();
             }
         }
         stop_stage:
@@ -687,8 +705,8 @@ void drive_stage(const std::string& position_method, double eps, bool enable_sta
     else {
         prepareStage.release();
         while (active) {
-            if (!StagePositionsMatrixQueue.empty()) {
-                StagePositionsMatrixQueue.pop_front();
+            if (!buffers.StagePositionsMatrixQueue.empty()) {
+                buffers.StagePositionsMatrixQueue.pop_front();
             }
         }
     }

@@ -9,10 +9,12 @@
     "STAGE_UPDATE": 0.02,
     "EPSILON": 50,
     "MAGNIFICATION": 0.0645,
-    "ENABLE_LOGGING": true,
+    "ENABLE_LOGGING": false,
     "EVENT_FILEPATH": "~/data/test",
-    "REPORT_AVERAGE": false,
-    "VERBOSE": false
+    "REPORT_AVERAGE": true,
+    "VERBOSE": true,
+    "BUFFER_SIZE": 5,
+    "HISTORY_SIZE": 12
   },
   "NOISE_FILTER": {
     "DAVIS_BACKGROUND_ACTIVITY_TIME": 8,
