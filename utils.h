@@ -15,6 +15,19 @@ bool move_stage(float pan_position, float prev_pan_position, float tilt_position
     return false;
 }
 
+arma::mat positions_vector_to_matrix(std::vector<double> positions) {
+    int n_positions = (int)(positions.size() / 2);
+    arma::mat positions_mat;
+    if (n_positions > 0) {
+        positions_mat.zeros(2, n_positions);
+        for(int i = 0; i < n_positions; i++) {
+            positions_mat(0, i) = positions[2*i];
+            positions_mat(1, i) = positions[2*i+1];
+        }
+    }
+    return positions_mat;
+}
+
 arma::mat add_position_history(const arma::mat& position_history, arma::mat positions) {
     //Shift columns to the right and populate first column with most recent position
     arma::mat ret = arma::shift(position_history, +1, 1);
