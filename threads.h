@@ -23,32 +23,24 @@ using json = nlohmann::json;
 
 static std::atomic_bool globalShutdown(false);
 std::counting_semaphore<1> prepareStage(0);
-std::counting_semaphore<100> sema_trackReady(0);
-std::counting_semaphore<100> sema_trackFinishedImage(0);
-std::counting_semaphore<100> sema_trackFinishedStage(0);
-std::counting_semaphore<100> sema_trackClear(0);
-std::counting_semaphore<100> sema_cvMatFinished(0);
-std::counting_semaphore<100> sema_cvMatClear(0);
-std::counting_semaphore<100> sema_cvMatPlotFinished(0);
-std::counting_semaphore<100> sema_positionsPlotFinished(0);
-std::counting_semaphore<100> sema_cvMatReady(0);
-std::counting_semaphore<100> sema_positionsStageFinished(0);
+std::counting_semaphore<1> sema_trackerProcessNext(1);
+std::counting_semaphore<1> sema_trackerFinished(0);
+std::counting_semaphore<1> sema_trackerFinishedPlotter(0);
+std::counting_semaphore<1> sema_plotterProcessNext(1);
+std::counting_semaphore<1> sema_plotterFinished(0);
+std::counting_semaphore<1> sema_trackerFinishedStage(0);
+std::counting_semaphore<1> sema_stageFinished(0);
+std::counting_semaphore<1> sema_stageProcessNext(1);
 
 class Buffers {
     public:
         boost::circular_buffer<std::vector<double>> PacketQueue;
-        boost::circular_buffer<cv::Mat> CVMatrixQueue;
-        boost::circular_buffer<arma::mat> PositionsMatrixQueue;
-        arma::mat previous_positions_plot;
-        arma::mat previous_positions_stage;
+        arma::mat previous_positions;
+        arma::mat positions;
         Buffers(const int buffer_size, const int history_size){
             PacketQueue.set_capacity(buffer_size);
-            CVMatrixQueue.set_capacity(buffer_size);
-            PositionsMatrixQueue.set_capacity(buffer_size);
-            previous_positions_plot.set_size(2, history_size);
-            previous_positions_plot.fill(arma::fill::zeros);
-            previous_positions_stage.set_size(2, history_size);
-            previous_positions_stage.fill(arma::fill::zeros);
+            previous_positions.set_size(2, history_size);
+            previous_positions.fill(arma::fill::zeros);
         }
 };
 
@@ -171,8 +163,6 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, c
                 processed += 1;
                 if (processed >= num_packets) {
                     buffers.PacketQueue.push_back(events);
-                    sema_trackReady.release();
-                    sema_cvMatReady.release();
                     events.clear();
                     processed = 0;
                 }
@@ -309,8 +299,6 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, con
                 processed += 1;
                 if (processed >= num_packets) {
                     buffers.PacketQueue.push_back(events);
-                    sema_trackReady.release();
-                    sema_cvMatReady.release();
                     events.clear();
                     processed = 0;
                 }
@@ -325,233 +313,66 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, con
     return (EXIT_SUCCESS);
 }
 
-void tracker (Buffers& buffers, double dt, DBSCAN_KNN T, const bool&active) {
+void tracker (Buffers& buffers, double dt, const DBSCAN_KNN& T, bool enable_tracking, const bool& active) {
     while (active) {
-        sema_trackReady.acquire();
-        // double free or corruption (out)
-        std::vector<double> events = buffers.PacketQueue.front();
-        std::vector<double> positions;
-        //double free or corruption (!prev)
-        if (events.empty()) {
-            buffers.PositionsMatrixQueue.push_back(positions_vector_to_matrix(positions));
-            sema_trackFinishedStage.release();
-            sema_trackFinishedImage.release();
-            sema_trackClear.release();
+        if (!sema_trackerProcessNext.try_acquire())
+            continue;
+        if (buffers.PacketQueue.empty()) {
+            sema_trackerProcessNext.release();
             continue;
         }
-        //free(): invalid pointer
-        // The detector takes a pointer to events.
-        double *mem{const_cast<double *>(events.data())};
-        // Starting time.
-        double t0{events[0]};
-
-        // Keep sizes of the vectors in variables.
-        int nEvents{(int) events.size() / 4};
-        while (true) {
-            // Read all events in one integration time.
-            double t1{t0 + dt};
-            int N{0};
-            for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
-                if (mem[4 * N] >= t1)
-                    break;
-
-            // Advance starting time.
-            t0 = t1;
-            // Feed events to the detector/tracker.
-            if (N > 0) {
-                //double free or corruption (!prev), double free or corruption (out), corrupted size vs. prev_size while consolidating
-                T(mem, N);
-                Eigen::MatrixXd targets{T.currentTracks()};
-
-                // Break once all events have been used and push last positions
-                if (t0 > events[4 * (nEvents - 1)]) {
-                    for (int i{0}; i < targets.rows(); ++i) {
-                        positions.push_back(targets(i, 0));
-                        positions.push_back(targets(i, 1));
-                    }
-                    break;
-                }
-                // Evolve tracks in time.
-                T.predict();
-
-                // Update eventIdx
-                mem += 4 * N;
-            }
-        }
-        //double free or corruption (!prev), corrupted size vs. prev_size while consolidating, free(): invalid pointer
-        buffers.PositionsMatrixQueue.push_back(positions_vector_to_matrix(positions));
-        sema_trackFinishedStage.release();
-        sema_trackFinishedImage.release();
-        sema_trackClear.release();
+        auto events = buffers.PacketQueue.front();
+        buffers.positions = run_tracker(events, dt, T, enable_tracking);
+        sema_trackerFinishedPlotter.release();
+        sema_trackerFinishedStage.release();
+        sema_trackerFinished.release();
     }
 }
 
-void plot_events(Buffers& buffers, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, bool report_average, const bool& active) {
-    int y_increment = (int)(mag * Ny / 2);
-    int x_increment = (int)(y_increment * Nx / Ny);
-    int thickness = 2;
-    int n_samples = 0;
-    int prev_x = 0;
-    int prev_y = 0;
-    std::ofstream stageFile(event_file + "-stage.csv");
-    auto start = std::chrono::high_resolution_clock::now();
-
+void plotter (Buffers& buffers, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, const bool& active) {
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS",
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
-
     while (active) {
-        sema_cvMatFinished.acquire();
-        auto cvmat = buffers.CVMatrixQueue.front();
-        if (enable_tracking) {
-            sema_trackFinishedImage.acquire();
-            int x_min, x_max, y_min, y_max;
-            auto positions = buffers.PositionsMatrixQueue.front();
-            auto stage_positions = get_position(position_method, positions, buffers.previous_positions_plot, eps);
-
-            for (int i=0; i < (int)positions.n_cols; i++) {
-                int x = (int)positions(0,i);
-                int y = (int)positions(1,i);
-                if (x == -10 || y == -10) {
-                    continue;
-                }
-
-                y_min = std::max(y - y_increment, 0);
-                x_min = std::max(x - x_increment, 0);
-                y_max = std::min(y + y_increment, Ny - 1);
-                x_max = std::min(x + x_increment, Nx - 1);
-
-                cv::Point p1(x_min, y_min);
-                cv::Point p2(x_max, y_max);
-                rectangle(cvmat, p1, p2,
-                          cv::Scalar(255, 0, 0),
-                          thickness, cv::LINE_8);
-            }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> timestamp_ms = end - start;
-            for (int i = 0; i < stage_positions.n_cols; i++) {
-                int x_stage = (int)stage_positions(0, i);
-                int y_stage = (int)stage_positions(1, i);
-                y_min = std::max(y_stage - y_increment, 0);
-                x_min = std::max(x_stage - x_increment, 0);
-                y_max = std::min(y_stage + y_increment, Ny - 1);
-                x_max = std::min(x_stage + x_increment, Nx - 1);
-
-                cv::Point p1_stage(x_min, y_min);
-                cv::Point p2_stage(x_max, y_max);
-
-                rectangle(cvmat, p1_stage, p2_stage,
-                          cv::Scalar(0, 0, 255),
-                          thickness, cv::LINE_8);
-
-                if(enable_event_log)
-                    stageFile << timestamp_ms.count() << ","
-                              << x_stage << ","
-                              << y_stage << "\n";
-            }
-
-            cv::putText(cvmat,
-                        std::string("Objects: ") + std::to_string((int)(stage_positions.size()/2)), //text
-                        cv::Point((int)(0.05*Nx),(int)(0.95*Ny)),
-                        cv::FONT_HERSHEY_DUPLEX,
-                        0.5,
-                        CV_RGB(118, 185, 0),
-                        2);
-
-            int first_x = 0;
-            int first_y = 0;
-            if (stage_positions.n_cols > 0) {
-                n_samples += 1;
-                first_x = (int) (stage_positions(0, 0) - ((float) Nx / 2));
-                first_y = (int) (((float) Ny / 2) - stage_positions(1, 0));
-                if (report_average) {
-                    first_x = (int)update_average(prev_x, first_x, n_samples);
-                    first_y = (int)update_average(prev_y, first_y, n_samples);
-                    if (n_samples > 500)
-                        n_samples = 0;
-                }
-            }
-            cv::putText(cvmat,
-                        std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) + std::string(")"), //text
-                        cv::Point((int)(0.80*Nx), (int)(0.95*Ny)),
-                        cv::FONT_HERSHEY_DUPLEX,
-                        0.5,
-                        CV_RGB(118, 185, 0),
-                        2);
-
-            prev_x = first_x;
-            prev_y = first_y;
+        if (!sema_plotterProcessNext.try_acquire())
+            continue;
+        if (buffers.PacketQueue.empty()) {
+            sema_plotterProcessNext.release();
+            continue;
         }
-        if (cvmat.rows > 0 && cvmat.cols > 0 ) {
-            cv::imshow("PLOT_EVENTS", cvmat);
-            cv::waitKey(1);
+        if (!sema_trackerFinishedPlotter.try_acquire()) {
+            sema_plotterProcessNext.release();
+            continue;
         }
-        sema_cvMatPlotFinished.release();
-        sema_positionsPlotFinished.release();
+        auto events = buffers.PacketQueue.front();
+        cv::Mat cvMat = read_packets(events, Nx, Ny, enable_event_log, event_file);
+        update_window(cvMat, buffers.positions, buffers.previous_positions, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file);
+        sema_plotterFinished.release();
     }
-    stageFile.close();
     cv::destroyWindow("PLOT_EVENTS");
 }
 
-void read_packets(Buffers& buffers, int Nx, int Ny, bool enable_event_log, const std::string& event_file, const bool& active) {
-    std::ofstream eventFile(event_file + "-events.csv");
+void clear_packets (Buffers& buffers, const bool& active) {
     while (active) {
-        sema_cvMatReady.acquire();
-        auto events = buffers.PacketQueue.front();
-        cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
-        if (events.empty()) {
-            buffers.CVMatrixQueue.push_back(cvEvents);
-            sema_cvMatFinished.release();
-            sema_cvMatClear.release();
+        if (!sema_trackerFinished.try_acquire())
+            continue;
+        if (!sema_plotterFinished.try_acquire()) {
+            sema_trackerFinished.release();
             continue;
         }
-        for (int i = 0; i < events.size(); i += 4) {
-            double ts = events.at(i);
-            int x = (int) events.at(i + 1);
-            int y = (int) events.at(i + 2);
-            int pol = (int) events.at(i + 3);
-            cvEvents.at<cv::Vec3b>(y, x) = pol ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
-            if(enable_event_log)
-                eventFile << ts << ","
-                          << x << ","
-                          << y << ","
-                          << pol << "\n";
+        if (!sema_stageFinished.try_acquire()) {
+            sema_trackerFinished.release();
+            sema_plotterFinished.release();
+            continue;
         }
-        if(enable_event_log)
-            eventFile << "\n";
-        buffers.CVMatrixQueue.push_back(cvEvents);
-        sema_cvMatFinished.release();
-        sema_cvMatClear.release();
-    }
-    eventFile.close();
-}
-
-void clear_packets(Buffers& buffers, bool enable_tracking, bool& active) {
-    while (active) {
-        sema_cvMatClear.acquire();
-        if (enable_tracking)
-            sema_trackClear.acquire();
         buffers.PacketQueue.pop_front();
+        sema_trackerProcessNext.release();
+        sema_plotterProcessNext.release();
+        sema_stageProcessNext.release();
     }
 }
 
-void clear_cvmat(Buffers& buffers, bool& active) {
-    while (active) {
-        sema_cvMatPlotFinished.acquire();
-        buffers.CVMatrixQueue.pop_front();
-    }
-}
-
-void clear_positionsmat(Buffers& buffers, bool& active) {
-    while (active) {
-        sema_positionsPlotFinished.acquire();
-        sema_positionsStageFinished.acquire();
-        buffers.PositionsMatrixQueue.pop_front();
-    }
-}
-
-void runner(Buffers& buffers, std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, std::thread& packet_clearer, std::thread& cv_clearer, std::thread& position_clearer, bool verbose, bool& active) {
+void runner(Buffers& buffers, std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& packet_clearer, bool verbose, bool& active) {
     printf("Press space to stop...\n");
     int i = 0;
     while(active) {
@@ -561,11 +382,7 @@ void runner(Buffers& buffers, std::thread& reader, std::thread& plotter, std::th
         if (i > 20) {
             i = 0;
             if (verbose) {
-                printf("Queue Sizes:\n");
-                printf("------------\n");
                 printf("Packet Queue: %zu\n", buffers.PacketQueue.size());
-                printf("Image Matrix Queue: %zu\n", buffers.CVMatrixQueue.size());
-                printf("Position Queue: %zu\n\n", buffers.PositionsMatrixQueue.size());
             }
         }
         i += 1;
@@ -574,10 +391,7 @@ void runner(Buffers& buffers, std::thread& reader, std::thread& plotter, std::th
     reader.join();
     plotter.join();
     tracker.join();
-    imager.join();
     packet_clearer.join();
-    cv_clearer.join();
-    position_clearer.join();
 }
 
 void launch_threads(Buffers& buffers, const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool report_average, bool verbose, bool& active) {
@@ -610,32 +424,26 @@ void launch_threads(Buffers& buffers, const std::string& device_type, double int
     if (device_type == "xplorer") {
         int Nx = 640;
         int Ny = 480;
-        std::thread packet_clearer(clear_packets, std::ref(buffers), enable_tracking, std::ref(active));
-        std::thread cv_clearer(clear_cvmat, std::ref(buffers), std::ref(active));
-        std::thread position_clearer(clear_positionsmat, std::ref(buffers), std::ref(active));
+        std::thread packet_clearer(clear_packets, std::ref(buffers), std::ref(active));
         std::thread writing_thread(read_xplorer, std::ref(buffers), num_packets, noise_params, std::ref(active));
-        std::thread plotting_thread(read_packets, std::ref(buffers), Nx, Ny, enable_event_log, event_file, std::ref(active));
-        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, std::ref(active));
-        std::thread image_thread(plot_events, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
-        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(packet_clearer), std::ref(cv_clearer), std::ref(position_clearer), verbose, std::ref(active));
+        std::thread plotting_thread(plotter, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
+        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, enable_tracking, std::ref(active));
+        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(packet_clearer), verbose, std::ref(active));
         running_thread.join();
     }
     else {
         int Nx = 346;
         int Ny = 260;
-        std::thread packet_clearer(clear_packets, std::ref(buffers), enable_tracking, std::ref(active));
-        std::thread cv_clearer(clear_cvmat, std::ref(buffers), std::ref(active));
-        std::thread position_clearer(clear_positionsmat, std::ref(buffers), std::ref(active));
+        std::thread packet_clearer(clear_packets, std::ref(buffers), std::ref(active));
         std::thread writing_thread(read_davis, std::ref(buffers), num_packets, noise_params, std::ref(active));
-        std::thread plotting_thread(read_packets, std::ref(buffers), Nx, Ny, enable_event_log, event_file, std::ref(active));
-        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, std::ref(active));
-        std::thread image_thread(plot_events, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
-        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(packet_clearer), std::ref(cv_clearer), std::ref(position_clearer), verbose, std::ref(active));
+        std::thread plotting_thread(plotter, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
+        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, enable_tracking, std::ref(active));
+        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(packet_clearer), verbose, std::ref(active));
         running_thread.join();
     }
 }
 
-void drive_stage(Buffers& buffers, const std::string& position_method, double eps, bool enable_stage, bool enable_tracking, double stage_update, bool& active) {
+void drive_stage(Buffers& buffers, const std::string& position_method, double eps, bool enable_stage, double stage_update, bool& active) {
     if (enable_stage) {
         std::mutex mtx;
         float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
@@ -653,10 +461,15 @@ void drive_stage(Buffers& buffers, const std::string& position_method, double ep
         prepareStage.release();
         auto start = std::chrono::high_resolution_clock::now();
         while (active) {
-            sema_trackFinishedStage.acquire();
-            auto positions = buffers.PositionsMatrixQueue.front();
+            if (!sema_stageProcessNext.try_acquire())
+                continue;
+            if (!sema_trackerFinishedStage.try_acquire()) {
+                sema_stageProcessNext.release();
+                continue;
+            }
+            auto positions = buffers.positions;
             if (positions.n_cols > 0) { // Stay in place if no object found
-                auto stage_positions = get_position(position_method, positions, buffers.previous_positions_stage, eps);
+                auto stage_positions = get_position(position_method, positions, buffers.previous_positions, eps);
 
                 // Go to first position in list. Selecting between objects to be implemented later.
                 double x = stage_positions(0,0) - ((double) nx / 2);
@@ -692,16 +505,20 @@ void drive_stage(Buffers& buffers, const std::string& position_method, double ep
                     start = std::chrono::high_resolution_clock::now();
                 }
             }
-            sema_positionsStageFinished.release();
+            sema_stageFinished.release();
         }
         pinger.join();
     }
     else {
         prepareStage.release();
         while (active) {
-            if (enable_tracking)
-                sema_trackFinishedStage.acquire();
-            sema_positionsStageFinished.release();
+            if (!sema_stageProcessNext.try_acquire())
+                continue;
+            if (!sema_trackerFinishedStage.try_acquire()) {
+                sema_stageProcessNext.release();
+                continue;
+            }
+            sema_stageFinished.release();
         }
     }
 }

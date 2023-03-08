@@ -61,6 +61,56 @@ arma::mat get_dbscan_positions(const arma::mat& positions_mat, double eps) {
     return positions_mat;
 }
 
+arma::mat run_tracker (std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking) {
+    // double free or corruption (out)
+    std::vector<double> positions;
+    //double free or corruption (!prev)
+    if (!enable_tracking || events.empty()) {
+        return positions_vector_to_matrix(positions);
+    }
+    //free(): invalid pointer
+    // The detector takes a pointer to events.
+    double *mem{events.data()};
+    // Starting time.
+    double t0{events[0]};
+
+    // Keep sizes of the vectors in variables.
+    int nEvents{(int) events.size() / 4};
+    while (true) {
+        // Read all events in one integration time.
+        double t1{t0 + dt};
+        int N{0};
+        for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
+            if (mem[4 * N] >= t1)
+                break;
+
+        // Advance starting time.
+        t0 = t1;
+        // Feed events to the detector/tracker.
+        if (N > 0) {
+            //double free or corruption (!prev), double free or corruption (out), corrupted size vs. prev_size while consolidating
+            T(mem, N);
+            Eigen::MatrixXd targets{T.currentTracks()};
+
+            // Break once all events have been used and push last positions
+            if (t0 > events[4 * (nEvents - 1)]) {
+                for (int i{0}; i < targets.rows(); ++i) {
+                    positions.push_back(targets(i, 0));
+                    positions.push_back(targets(i, 1));
+                }
+                break;
+            }
+            // Evolve tracks in time.
+            T.predict();
+
+            // Update eventIdx
+            mem += 4 * N;
+        }
+    }
+    //double free or corruption (!prev), corrupted size vs. prev_size while consolidating, free(): invalid pointer
+    return positions_vector_to_matrix(positions);
+}
+
 arma::mat get_position(const std::string& method, const arma::mat& positions, arma::mat& previous_positions, double eps) {
     arma::mat ret;
     if ((int)positions.n_cols > 0) {
@@ -84,4 +134,115 @@ arma::mat get_position(const std::string& method, const arma::mat& positions, ar
         }
     }
     return ret;
+}
+
+void update_window(cv::Mat cvmat, arma::mat positions, arma::mat prev_positions, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file) {
+    int y_increment = (int)(mag * Ny / 2);
+    int x_increment = (int)(y_increment * Nx / Ny);
+    std::ofstream stageFile(event_file + "-stage.csv");
+    auto start = std::chrono::high_resolution_clock::now();
+
+    if (enable_tracking) {
+        int thickness = 2;
+        int x_min, x_max, y_min, y_max;
+        auto stage_positions = get_position(position_method, positions, prev_positions, eps);
+
+        int first_x = 0;
+        int first_y = 0;
+        if (stage_positions.n_cols > 0) {
+            first_x = (int) positions(0, 0);
+            first_y = (int) positions(1, 0);
+        }
+
+        for (int i=0; i < (int)positions.n_cols; i++) {
+            int x = (int)positions(0,i);
+            int y = (int)positions(1,i);
+            if (x == -10 || y == -10) {
+                continue;
+            }
+
+            y_min = std::max(y - y_increment, 0);
+            x_min = std::max(x - x_increment, 0);
+            y_max = std::min(y + y_increment, Ny - 1);
+            x_max = std::min(x + x_increment, Nx - 1);
+
+            cv::Point p1(x_min, y_min);
+            cv::Point p2(x_max, y_max);
+            rectangle(cvmat, p1, p2,
+                      cv::Scalar(255, 0, 0),
+                      thickness, cv::LINE_8);
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> timestamp_ms = end - start;
+        for (int i = 0; i < stage_positions.n_cols; i++) {
+            int x_stage = (int)stage_positions(0, i);
+            int y_stage = (int)stage_positions(1, i);
+            y_min = std::max(y_stage - y_increment, 0);
+            x_min = std::max(x_stage - x_increment, 0);
+            y_max = std::min(y_stage + y_increment, Ny - 1);
+            x_max = std::min(x_stage + x_increment, Nx - 1);
+
+            cv::Point p1_stage(x_min, y_min);
+            cv::Point p2_stage(x_max, y_max);
+
+            rectangle(cvmat, p1_stage, p2_stage,
+                      cv::Scalar(0, 0, 255),
+                      thickness, cv::LINE_8);
+
+            if(enable_event_log)
+                stageFile << timestamp_ms.count() << ","
+                          << x_stage << ","
+                          << y_stage << "\n";
+        }
+
+        cv::putText(cvmat,
+                    std::string("Objects: ") + std::to_string((int)(stage_positions.size()/2)), //text
+                    cv::Point((int)(0.05*Nx),(int)(0.95*Ny)),
+                    cv::FONT_HERSHEY_DUPLEX,
+                    0.5,
+                    CV_RGB(118, 185, 0),
+                    2);
+
+        cv::putText(cvmat,
+                    std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) + std::string(")"), //text
+                    cv::Point((int)(0.80*Nx), (int)(0.95*Ny)),
+                    cv::FONT_HERSHEY_DUPLEX,
+                    0.5,
+                    CV_RGB(118, 185, 0),
+                    2);
+    }
+
+    if (cvmat.rows > 0 && cvmat.cols > 0 ) {
+        cv::imshow("PLOT_EVENTS", cvmat);
+        cv::waitKey(1);
+    }
+
+    stageFile.close();
+}
+
+cv::Mat read_packets(std::vector<double> events, int Nx, int Ny, bool enable_event_log, const std::string& event_file) {
+    std::ofstream eventFile(event_file + "-events.csv");
+    cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
+    if (events.empty()) {
+        eventFile.close();
+        return cvEvents;
+    }
+    for (int i = 0; i < events.size(); i += 4) {
+        double ts = events.at(i);
+        int x = (int) events.at(i + 1);
+        int y = (int) events.at(i + 2);
+        int pol = (int) events.at(i + 3);
+        cvEvents.at<cv::Vec3b>(y, x) = pol ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
+        if(enable_event_log)
+            eventFile << ts << ","
+                      << x << ","
+                      << y << ","
+                      << pol << "\n";
+    }
+    if(enable_event_log)
+        eventFile << "\n";
+
+    eventFile.close();
+    return cvEvents;
 }

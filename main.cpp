@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
     Buffers buffers(buffer_size, history_size);
 
     bool active = true;
-    std::thread stage_thread(drive_stage, std::ref(buffers), position_method, eps, enable_stage, enable_tracking, stage_update, std::ref(active));
+    std::thread stage_thread(drive_stage, std::ref(buffers), position_method, eps, enable_stage, stage_update, std::ref(active));
     prepareStage.acquire();
     launch_threads(buffers, device_type, integrationtime, num_packets, enable_tracking, position_method, eps, enable_event_log, event_file, mag, noise_params, report_average, verbose, std::ref(active));
     stage_thread.join();
