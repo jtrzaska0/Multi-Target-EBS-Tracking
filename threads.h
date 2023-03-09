@@ -165,7 +165,7 @@ int read_xplorer (Buffers& buffers, int num_packets, bool enable_tracking, const
                     events.push_back(e.getPolarity());
                 }
                 processed += 1;
-                if (processed >= num_packets) {
+                if (processed >= num_packets && !events.empty()) {
                     if (enable_tracking) {
                         buffers.TrackingVectorQueue.push_back(events);
                     }
@@ -304,7 +304,7 @@ int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const j
                     events.push_back(e.getPolarity());
                 }
                 processed += 1;
-                if (processed >= num_packets) {
+                if (processed >= num_packets && !events.empty()) {
                     if (enable_tracking) {
                         buffers.TrackingVectorQueue.push_back(events);
                     }
