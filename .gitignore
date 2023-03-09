@@ -1049,3 +1049,6 @@ dkms.conf
 
 # EBS Tracking Repo
 Event-Sensor-Detection-and-Tracking/
+
+# CMakeUserPresets Conan2
+CMakeUserPresets.json
