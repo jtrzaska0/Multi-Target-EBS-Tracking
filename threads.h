@@ -47,7 +47,7 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
+int read_xplorer (Buffers& buffers, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
 
@@ -107,13 +107,12 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, b
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
-    int processed = 0;
-    std::vector<double> events;
     printf("Press space to stop...\n");
     auto start = std::chrono::high_resolution_clock::now();
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
+        std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
-        if (packetContainer == nullptr) {
+        if (packetContainer == nullptr || buffers.PacketQueue.full()) {
             continue;
         }
         for (auto &packet: *packetContainer) {
@@ -139,14 +138,9 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, b
                     events.push_back(e.getY());
                     events.push_back(e.getPolarity());
                 }
-                processed += 1;
-                if (processed >= num_packets) {
-                    buffers.PacketQueue.push_back(events);
-                    events.clear();
-                    processed = 0;
-                }
             }
         }
+        buffers.PacketQueue.push_back(events);
         if (key_is_pressed(XK_space)) {
             active = false;
         }
@@ -165,7 +159,7 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, b
     return (EXIT_SUCCESS);
 }
 
-int read_davis (Buffers& buffers, int num_packets, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
+int read_davis (Buffers& buffers, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
 
@@ -240,13 +234,12 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, boo
     davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_GYROSCOPE, false);
     davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_TEMPERATURE, false);
 
-    int processed = 0;
-    std::vector<double> events;
     printf("Press space to stop...\n");
     auto start = std::chrono::high_resolution_clock::now();
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
+        std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
-        if (packetContainer == nullptr) {
+        if (packetContainer == nullptr || buffers.PacketQueue.full()) {
             continue;
         }
 
@@ -273,14 +266,9 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, boo
                     events.push_back(e.getY());
                     events.push_back(e.getPolarity());
                 }
-                processed += 1;
-                if (processed >= num_packets) {
-                    buffers.PacketQueue.push_back(events);
-                    events.clear();
-                    processed = 0;
-                }
             }
         }
+        buffers.PacketQueue.push_back(events);
         if (key_is_pressed(XK_space)) {
             active = false;
         }
@@ -301,7 +289,7 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, boo
 
 void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN T, bool enable_tracking,
                        int Nx, int Ny, bool enable_event_log, const std::string& event_file,
-                       double mag, const std::string& position_method, double eps, bool& active,
+                       double mag, const std::string& position_method, double eps, const bool& active,
                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params) {
     std::counting_semaphore<1> startNext(1);
     cv::Mat image;

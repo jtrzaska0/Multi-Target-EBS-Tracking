@@ -44,7 +44,6 @@ int main(int argc, char* argv[]) {
 
     std::string device_type = params.value("DEVICE_TYPE", "xplorer");
     double integrationtime = params.value("INTEGRATION_TIME_MS", 2);
-    int num_packets = params.value("PACKET_NUMBER", 1);
     bool enable_tracking = params.value("ENABLE_TRACKING", false);
     bool enable_stage = params.value("ENABLE_STAGE", false);
     std::string position_method = params.value("STAGE_METHOD", "median-history");
@@ -93,7 +92,7 @@ int main(int argc, char* argv[]) {
         Ny = 240;
     }
 
-    int ret = 0;
+    int ret;
     bool active = true;
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS",
@@ -106,18 +105,18 @@ int main(int argc, char* argv[]) {
         std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params = calibrate_stage(&kessler);
         std::thread processor(processing_threads, std::ref(buffers), &kessler, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, std::ref(active), cal_params);
         if (device_type == "xplorer")
-            ret = read_xplorer(buffers, num_packets, noise_params, verbose, enable_filter, active);
+            ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
         else
-            ret = read_davis(buffers, num_packets, noise_params, verbose, enable_filter, active);
+            ret = read_davis(buffers, noise_params, verbose, enable_filter, active);
         processor.join();
     }
     else {
         std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params = calibrate_stage(nullptr);
         std::thread processor(processing_threads, std::ref(buffers), nullptr, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, std::ref(active), cal_params);
         if (device_type == "xplorer")
-            ret = read_xplorer(buffers, num_packets, noise_params, verbose, enable_filter, active);
+            ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
         else
-            ret = read_davis(buffers, num_packets, noise_params, verbose, enable_filter, active);
+            ret = read_davis(buffers, noise_params, verbose, enable_filter, active);
         processor.join();
     }
 
