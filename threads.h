@@ -291,7 +291,6 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
                        int Nx, int Ny, bool enable_event_log, const std::string& event_file,
                        double mag, const std::string& position_method, double eps, const bool& active,
                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params) {
-    std::counting_semaphore<1> startNext(1);
     cv::Mat image;
     arma::mat positions;
     float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
@@ -302,36 +301,30 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
     while (active) {
         if (buffers.PacketQueue.empty())
             continue;
-        startNext.acquire();
         std::future<std::tuple<cv::Mat, arma::mat>> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
                            Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
         buffers.PacketQueue.pop_front();
-        startNext.release();
 
         fill_processorB:
         if (!active)
             continue;
         if (buffers.PacketQueue.empty())
             goto fill_processorB;
-        startNext.acquire();
         std::future<std::tuple<cv::Mat, arma::mat>> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
                            Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
         buffers.PacketQueue.pop_front();
-        startNext.release();
 
         fill_processorC:
         if (!active)
             continue;
         if (buffers.PacketQueue.empty())
             goto fill_processorC;
-        startNext.acquire();
         std::future<std::tuple<cv::Mat, arma::mat>> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
                            Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
         buffers.PacketQueue.pop_front();
-        startNext.release();
 
         std::tie(image, positions) = fut_resultA.get();
         update_window("PLOT_EVENTS", image);
