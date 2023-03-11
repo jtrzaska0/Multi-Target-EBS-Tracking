@@ -57,6 +57,7 @@ int main(int argc, char* argv[]) {
     bool verbose = params.value("VERBOSE", false);
     const int buffer_size = params.value("BUFFER_SIZE", 100);
     const int history_size = params.value("HISTORY_SIZE", 12);
+    bool enable_filter = noise_params.value("ENABLE_FILTER", false);
     Buffers buffers(buffer_size, history_size);
 
     /**Create an Algorithm object here.**/
@@ -108,9 +109,9 @@ int main(int argc, char* argv[]) {
 
     int ret;
     if (device_type == "xplorer")
-        ret = read_xplorer(buffers, num_packets, noise_params, verbose, active);
+        ret = read_xplorer(buffers, num_packets, noise_params, verbose, enable_filter, active);
     else
-        ret = read_davis(buffers, num_packets, noise_params, verbose, active);
+        ret = read_davis(buffers, num_packets, noise_params, verbose, enable_filter, active);
     processor.join();
     cv::destroyWindow("PLOT_EVENTS");
     return ret;

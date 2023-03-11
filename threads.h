@@ -47,7 +47,7 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, bool verbose, bool& active) {
+int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
 
@@ -125,7 +125,8 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, b
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
-                dvsNoiseFilter.apply(*polarity);
+                if(enable_filter)
+                    dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
                     // Discard invalid events (filtered out).
@@ -164,7 +165,7 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, b
     return (EXIT_SUCCESS);
 }
 
-int read_davis (Buffers& buffers, int num_packets, const json& noise_params, bool verbose, bool& active) {
+int read_davis (Buffers& buffers, int num_packets, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
 
@@ -201,7 +202,7 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, boo
     davisHandle.sendDefaultConfig();
 
     // Enable hardware filters if present.
-    if (davis_info.dvsHasBackgroundActivityFilter) {
+    if (davis_info.dvsHasBackgroundActivityFilter && enable_filter) {
         davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME, noise_params.value("DAVIS_BACKGROUND_ACTIVITY_TIME", 8));
         davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY, noise_params.value("DAVIS_BACKGROUND_ACTIVITY", true));
 
@@ -258,7 +259,8 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, boo
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
-                dvsNoiseFilter.apply(*polarity);
+                if (enable_filter)
+                    dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
                     // Discard invalid events (filtered out).
