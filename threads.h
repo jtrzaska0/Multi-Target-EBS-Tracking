@@ -22,25 +22,15 @@
 using json = nlohmann::json;
 
 static std::atomic_bool globalShutdown(false);
-std::counting_semaphore<1> prepareStage(0);
-std::counting_semaphore<1> sema_trackerProcessNext(1);
-std::counting_semaphore<1> sema_trackerFinished(0);
-std::counting_semaphore<1> sema_trackerFinishedPlotter(0);
-std::counting_semaphore<1> sema_plotterProcessNext(1);
-std::counting_semaphore<1> sema_plotterFinished(0);
-std::counting_semaphore<1> sema_trackerFinishedStage(0);
-std::counting_semaphore<1> sema_stageFinished(0);
-std::counting_semaphore<1> sema_stageProcessNext(1);
 
 class Buffers {
     public:
         boost::circular_buffer<std::vector<double>> PacketQueue;
-        arma::mat previous_positions;
-        arma::mat positions;
+        arma::mat prev_positions;
         Buffers(const int buffer_size, const int history_size){
             PacketQueue.set_capacity(buffer_size);
-            previous_positions.set_size(2, history_size);
-            previous_positions.fill(arma::fill::zeros);
+            prev_positions.set_size(2, history_size);
+            prev_positions.fill(arma::fill::zeros);
         }
 };
 
@@ -57,21 +47,8 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, const bool& active) {
+int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, bool verbose, bool& active) {
     // Install signal handler for global shutdown.
-#if defined(_WIN32)
-    if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGTERM. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-
-	if (signal(SIGINT, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGINT. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-#else
     struct sigaction shutdownAction{};
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
@@ -91,7 +68,6 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, c
                           "Failed to set signal handler for SIGINT. Error: %d.", errno);
         return (EXIT_FAILURE);
     }
-#endif
 
     // Open a DAVIS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
     auto handle = libcaer::devices::dvXplorer(1);
@@ -133,6 +109,8 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, c
 
     int processed = 0;
     std::vector<double> events;
+    printf("Press space to stop...\n");
+    auto start = std::chrono::high_resolution_clock::now();
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
         if (packetContainer == nullptr) {
@@ -168,6 +146,15 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, c
                 }
             }
         }
+        if (key_is_pressed(XK_space)) {
+            active = false;
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> timestamp_ms = end - start;
+        if (timestamp_ms.count() > 2000 && verbose) {
+            start = std::chrono::high_resolution_clock::now();
+            printf("Packet Queue: %zu\n", buffers.PacketQueue.size());
+        }
     }
     handle.dataStop();
 
@@ -177,21 +164,8 @@ int read_xplorer (Buffers& buffers, int num_packets, const json& noise_params, c
     return (EXIT_SUCCESS);
 }
 
-int read_davis (Buffers& buffers, int num_packets, const json& noise_params, const bool& active) {
+int read_davis (Buffers& buffers, int num_packets, const json& noise_params, bool verbose, bool& active) {
     // Install signal handler for global shutdown.
-#if defined(_WIN32)
-    if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGTERM. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-
-	if (signal(SIGINT, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGINT. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-#else
     struct sigaction shutdownAction{};
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
@@ -211,7 +185,6 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, con
                           "Failed to set signal handler for SIGINT. Error: %d.", errno);
         return (EXIT_FAILURE);
     }
-#endif
 
     // Open a DAVIS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
     libcaer::devices::davis davisHandle = libcaer::devices::davis(1);
@@ -268,6 +241,8 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, con
 
     int processed = 0;
     std::vector<double> events;
+    printf("Press space to stop...\n");
+    auto start = std::chrono::high_resolution_clock::now();
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
         if (packetContainer == nullptr) {
@@ -304,6 +279,15 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, con
                 }
             }
         }
+        if (key_is_pressed(XK_space)) {
+            active = false;
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> timestamp_ms = end - start;
+        if (timestamp_ms.count() > 2000 && verbose) {
+            start = std::chrono::high_resolution_clock::now();
+            printf("Packet Queue: %zu\n", buffers.PacketQueue.size());
+        }
     }
     davisHandle.dataStop();
 
@@ -313,212 +297,60 @@ int read_davis (Buffers& buffers, int num_packets, const json& noise_params, con
     return (EXIT_SUCCESS);
 }
 
-void tracker (Buffers& buffers, double dt, const DBSCAN_KNN& T, bool enable_tracking, const bool& active) {
+void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN T, bool enable_tracking,
+                       int Nx, int Ny, bool enable_event_log, const std::string& event_file,
+                       double mag, const std::string& position_method, double eps, bool& active,
+                       std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params) {
+    std::counting_semaphore<1> startNext(1);
+    cv::Mat image;
+    arma::mat positions;
+    float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
+    double hfovx, hfovy, y0, r;
+    int nx, ny;
+    std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r) = cal_params;
+    auto start = std::chrono::high_resolution_clock::now();
     while (active) {
-        if (!sema_trackerProcessNext.try_acquire())
+        if (buffers.PacketQueue.empty())
             continue;
-        if (buffers.PacketQueue.empty()) {
-            sema_trackerProcessNext.release();
-            continue;
-        }
-        auto events = buffers.PacketQueue.front();
-        buffers.positions = run_tracker(events, dt, T, enable_tracking);
-        sema_trackerFinishedPlotter.release();
-        sema_trackerFinishedStage.release();
-        sema_trackerFinished.release();
-    }
-}
-
-void plotter (Buffers& buffers, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, const bool& active) {
-    cv::startWindowThread();
-    cv::namedWindow("PLOT_EVENTS",
-                    cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
-    while (active) {
-        if (!sema_plotterProcessNext.try_acquire())
-            continue;
-        if (buffers.PacketQueue.empty()) {
-            sema_plotterProcessNext.release();
-            continue;
-        }
-        if (!sema_trackerFinishedPlotter.try_acquire()) {
-            sema_plotterProcessNext.release();
-            continue;
-        }
-        auto events = buffers.PacketQueue.front();
-        cv::Mat cvMat = read_packets(events, Nx, Ny, enable_event_log, event_file);
-        update_window(cvMat, buffers.positions, buffers.previous_positions, mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file);
-        sema_plotterFinished.release();
-    }
-    cv::destroyWindow("PLOT_EVENTS");
-}
-
-void clear_packets (Buffers& buffers, const bool& active) {
-    while (active) {
-        if (!sema_trackerFinished.try_acquire())
-            continue;
-        if (!sema_plotterFinished.try_acquire()) {
-            sema_trackerFinished.release();
-            continue;
-        }
-        if (!sema_stageFinished.try_acquire()) {
-            sema_trackerFinished.release();
-            sema_plotterFinished.release();
-            continue;
-        }
+        startNext.acquire();
+        std::future<std::tuple<cv::Mat, arma::mat>> fut_resultA =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
+                           Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
         buffers.PacketQueue.pop_front();
-        sema_trackerProcessNext.release();
-        sema_plotterProcessNext.release();
-        sema_stageProcessNext.release();
-    }
-}
+        startNext.release();
 
-void runner(Buffers& buffers, std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& packet_clearer, bool verbose, bool& active) {
-    printf("Press space to stop...\n");
-    int i = 0;
-    while(active) {
-        if (key_is_pressed(XK_space)) {
-            active = false;
-        }
-        if (i > 20) {
-            i = 0;
-            if (verbose) {
-                printf("Packet Queue: %zu\n", buffers.PacketQueue.size());
-            }
-        }
-        i += 1;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    reader.join();
-    plotter.join();
-    tracker.join();
-    packet_clearer.join();
-}
+        fill_processorB:
+        if (!active)
+            continue;
+        if (buffers.PacketQueue.empty())
+            goto fill_processorB;
+        startNext.acquire();
+        std::future<std::tuple<cv::Mat, arma::mat>> fut_resultB =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
+                           Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
+        buffers.PacketQueue.pop_front();
+        startNext.release();
 
-void launch_threads(Buffers& buffers, const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool report_average, bool verbose, bool& active) {
-    /**Create an Algorithm object here.**/
-    // Matrix initializer
-    // DBSCAN
-    Eigen::MatrixXd invals {Eigen::MatrixXd::Zero(1, 4)};
+        fill_processorC:
+        if (!active)
+            continue;
+        if (buffers.PacketQueue.empty())
+            goto fill_processorC;
+        startNext.acquire();
+        std::future<std::tuple<cv::Mat, arma::mat>> fut_resultC =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
+                           Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
+        buffers.PacketQueue.pop_front();
+        startNext.release();
 
-    // Mean Shift
-    invals(0,0) = 5.2;
-    invals(0,1) = 9;
-    invals(0,2) = 74;
-    invals(0,3) = 1.2;
-    // Model initializer
-    double DT = integrationtime;
-    double p3 = pow(DT, 3) / 3;
-    double p2 = pow(DT, 2) / 2;
-
-    Eigen::MatrixXd P {{16, 0, 0, 0}, {0, 16, 0, 0}, {0, 0, 9, 0}, {0, 0, 0, 9}};
-    Eigen::MatrixXd F {{1, 0, DT, 0}, {0, 1, 0, DT}, {0, 0, 1, 0}, {0, 0, 0, 1}};
-    Eigen::MatrixXd Q {{p3, 0, p2, 0}, {0, p3, 0, p2}, {p2, 0, DT, 0}, {0, p2, 0, DT}};
-    Eigen::MatrixXd H {{1, 0, 0, 0}, {0, 1, 0, 0}};
-    Eigen::MatrixXd R {{7, 0}, {0, 7}};
-
-    // Define the model.
-    KModel k_model {.dt = DT, .P = P, .F = F, .Q = Q, .H = H, .R = R};
-    // Algo initializer
-    DBSCAN_KNN algo(invals, k_model);
-
-    if (device_type == "xplorer") {
-        int Nx = 640;
-        int Ny = 480;
-        std::thread packet_clearer(clear_packets, std::ref(buffers), std::ref(active));
-        std::thread writing_thread(read_xplorer, std::ref(buffers), num_packets, noise_params, std::ref(active));
-        std::thread plotting_thread(plotter, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
-        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(packet_clearer), verbose, std::ref(active));
-        running_thread.join();
-    }
-    else {
-        int Nx = 346;
-        int Ny = 260;
-        std::thread packet_clearer(clear_packets, std::ref(buffers), std::ref(active));
-        std::thread writing_thread(read_davis, std::ref(buffers), num_packets, noise_params, std::ref(active));
-        std::thread plotting_thread(plotter, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, std::ref(active));
-        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, enable_tracking, std::ref(active));
-        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(packet_clearer), verbose, std::ref(active));
-        running_thread.join();
-    }
-}
-
-void drive_stage(Buffers& buffers, const std::string& position_method, double eps, bool enable_stage, double stage_update, bool& active) {
-    if (enable_stage) {
-        std::mutex mtx;
-        float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
-        float prev_pan_position = 0;
-        float prev_tilt_position = 0;
-        double hfovx, hfovy, y0, r;
-        int nx, ny;
-        Stage kessler("192.168.50.1", 5520);
-        kessler.handshake();
-        std::cout << kessler.get_device_info().to_string();
-        std::thread pinger(ping, std::ref(kessler), std::ref(mtx), std::ref(active));
-        std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(std::ref(kessler));
-        printf("Enter approximate target distance in meters:\n");
-        std::cin >> r;
-        prepareStage.release();
-        auto start = std::chrono::high_resolution_clock::now();
-        while (active) {
-            if (!sema_stageProcessNext.try_acquire())
-                continue;
-            if (!sema_trackerFinishedStage.try_acquire()) {
-                sema_stageProcessNext.release();
-                continue;
-            }
-            auto positions = buffers.positions;
-            if (positions.n_cols > 0) { // Stay in place if no object found
-                auto stage_positions = get_position(position_method, positions, buffers.previous_positions, eps);
-
-                // Go to first position in list. Selecting between objects to be implemented later.
-                double x = stage_positions(0,0) - ((double) nx / 2);
-                double y = ((double) ny / 2) - stage_positions(1,0);
-
-                double theta = get_theta(y, ny, hfovy);
-                double phi = get_phi(x, nx, hfovx);
-                double theta_prime = get_theta_prime(phi, theta, y0, r, theta_prime_error);
-                double phi_prime = get_phi_prime(phi, theta, y0, r, phi_prime_error);
-
-                float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
-                float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
-                auto end = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<double, std::milli> since_last = end - start;
-
-                bool move = move_stage(pan_position, prev_pan_position, tilt_position, prev_tilt_position, stage_update);
-
-                if (since_last.count() > 50 && move) {
-                    printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / PI,
-                           phi_prime * 180 / PI);
-                    printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
-                           pan_position, end_pan - begin_pan, tilt_position, end_tilt - begin_tilt);
-                    printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
-
-                    mtx.lock();
-                    kessler.set_position_speed_acceleration(2, pan_position, (float)0.6*PAN_MAX_SPEED, PAN_MAX_ACC);
-                    kessler.set_position_speed_acceleration(3, tilt_position, (float)0.6*TILT_MAX_SPEED, TILT_MAX_ACC);
-                    mtx.unlock();
-
-                    prev_pan_position = pan_position;
-                    prev_tilt_position = tilt_position;
-
-                    start = std::chrono::high_resolution_clock::now();
-                }
-            }
-            sema_stageFinished.release();
-        }
-        pinger.join();
-    }
-    else {
-        prepareStage.release();
-        while (active) {
-            if (!sema_stageProcessNext.try_acquire())
-                continue;
-            if (!sema_trackerFinishedStage.try_acquire()) {
-                sema_stageProcessNext.release();
-                continue;
-            }
-            sema_stageFinished.release();
-        }
+        std::tie(image, positions) = fut_resultA.get();
+        update_window("PLOT_EVENTS", image);
+        start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
+        std::tie(image, positions) = fut_resultB.get();
+        update_window("PLOT_EVENTS", image);
+        start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
+        std::tie(image, positions) = fut_resultC.get();
+        update_window("PLOT_EVENTS", image);
+        start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
     }
 }

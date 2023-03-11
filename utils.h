@@ -1,13 +1,15 @@
 #pragma once
 
+#include <future>
 #include <armadillo>
 #include <mlpack.hpp>
+#include <utility>
 
 double update_average(int prev_val, int new_val, int n_samples) {
     return (prev_val*n_samples + new_val)/((double)n_samples + 1);
 }
 
-bool move_stage(float pan_position, float prev_pan_position, float tilt_position, float prev_tilt_position, double update) {
+bool check_move_stage(float pan_position, float prev_pan_position, float tilt_position, float prev_tilt_position, double update) {
     float pan_change = abs((pan_position - prev_pan_position)/prev_pan_position);
     float tilt_change = abs((tilt_position - prev_tilt_position)/prev_tilt_position);
     if (pan_change > update || tilt_change > update)
@@ -136,16 +138,17 @@ arma::mat get_position(const std::string& method, const arma::mat& positions, ar
     return ret;
 }
 
-void update_window(cv::Mat cvmat, arma::mat positions, arma::mat prev_positions, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file) {
+arma::mat calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat prev_positions, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
     std::ofstream stageFile(event_file + "-stage.csv");
+    arma::mat stage_positions;
     auto start = std::chrono::high_resolution_clock::now();
 
     if (enable_tracking) {
         int thickness = 2;
         int x_min, x_max, y_min, y_max;
-        auto stage_positions = get_position(position_method, positions, prev_positions, eps);
+        stage_positions = get_position(position_method, positions, prev_positions, eps);
 
         int first_x = 0;
         int first_y = 0;
@@ -213,12 +216,15 @@ void update_window(cv::Mat cvmat, arma::mat positions, arma::mat prev_positions,
                     2);
     }
 
+    stageFile.close();
+    return stage_positions;
+}
+
+void update_window(const std::string& winname, const cv::Mat& cvmat) {
     if (cvmat.rows > 0 && cvmat.cols > 0 ) {
-        cv::imshow("PLOT_EVENTS", cvmat);
+        cv::imshow(winname, cvmat);
         cv::waitKey(1);
     }
-
-    stageFile.close();
 }
 
 cv::Mat read_packets(std::vector<double> events, int Nx, int Ny, bool enable_event_log, const std::string& event_file) {
@@ -240,9 +246,77 @@ cv::Mat read_packets(std::vector<double> events, int Nx, int Ny, bool enable_eve
                       << y << ","
                       << pol << "\n";
     }
-    if(enable_event_log)
-        eventFile << "\n";
 
     eventFile.close();
     return cvEvents;
+}
+
+// take a packet and run through the entire processing taskflow
+// return a cv mat for plotting and an arma mat for stage positions
+std::tuple<cv::Mat, arma::mat> process_packet(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking,
+                                              int Nx, int Ny, bool enable_event_log, const std::string& event_file,
+                                              arma::mat prev_positions, double mag, const std::string& position_method,
+                                              double eps) {
+    std::future<arma::mat> fut_positions = std::async(std::launch::async, run_tracker, events, dt, T, enable_tracking);
+    std::future<cv::Mat> fut_event_image = std::async(std::launch::async, read_packets, events, Nx, Ny, enable_event_log, event_file);
+    arma::mat positions = fut_positions.get();
+    cv::Mat event_image = fut_event_image.get();
+    arma::mat stage_positions = calculate_window(event_image, positions, std::move(prev_positions), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file);
+    std::tuple<cv::Mat, arma::mat> ret = {event_image, stage_positions};
+    return ret;
+}
+
+std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> calibrate_stage(Stage* kessler) {
+    std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params;
+    if (kessler) {
+        std::mutex mtx;
+        float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
+        double hfovx, hfovy, y0, r;
+        int nx, ny;
+        kessler->handshake();
+        std::cout << kessler->get_device_info().to_string();
+        bool cal_active = true;
+        std::thread pinger(ping, std::ref(*kessler), std::ref(mtx), std::ref(cal_active));
+        std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(std::ref(*kessler));
+        printf("Enter approximate target distance in meters:\n");
+        std::cin >> r;
+        cal_active = false;
+        pinger.join();
+        cal_params = {nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r};
+    }
+    return cal_params;
+}
+
+std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* kessler, const arma::mat& positions, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
+                 float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double y0,
+                 double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start) {
+    if (kessler) {
+        // Go to first position in list. Selecting between objects to be implemented later.
+        double x = positions(0,0) - ((double) nx / 2);
+        double y = ((double) ny / 2) - positions(1,0);
+
+        double theta = get_theta(y, ny, hfovy);
+        double phi = get_phi(x, nx, hfovx);
+        double theta_prime = get_theta_prime(phi, theta, y0, r, theta_prime_error);
+        double phi_prime = get_phi_prime(phi, theta, y0, r, phi_prime_error);
+
+        float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
+        float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> timestamp_ms = end - last_start;
+        if (timestamp_ms.count() > 100) {
+            printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / PI,
+                   phi_prime * 180 / PI);
+            printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
+                   pan_position, end_pan - begin_pan, tilt_position, end_tilt - begin_tilt);
+            printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
+
+            kessler->set_position_speed_acceleration(2, pan_position, (float)0.6*PAN_MAX_SPEED, PAN_MAX_ACC);
+            kessler->set_position_speed_acceleration(3, tilt_position, (float)0.6*TILT_MAX_SPEED, TILT_MAX_ACC);
+
+            return std::chrono::high_resolution_clock::now();
+        }
+    }
+    return last_start;
 }
