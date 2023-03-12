@@ -291,15 +291,13 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
                        int Nx, int Ny, bool enable_event_log, const std::string& event_file,
                        double mag, const std::string& position_method, double eps, const bool& active,
                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params) {
-    cv::Mat image;
-    arma::mat positions;
-    std::string event_string;
-    std::string positions_string;
     auto const[nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r] = cal_params;
     auto start = std::chrono::high_resolution_clock::now();
     std::ofstream stageFile(event_file + "-stage.csv");
     std::ofstream eventFile(event_file + "-events.csv");
     while (active) {
+        bool A_processed = false;
+        bool B_processed = false;
         if (buffers.PacketQueue.empty())
             continue;
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultA =
@@ -310,8 +308,14 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
         fill_processorB:
         if (!active)
             continue;
-        if (buffers.PacketQueue.empty())
+        if (buffers.PacketQueue.empty()) {
+            if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                A_processed = true;
+                start = read_future(fut_resultA, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                   phi_prime_error, hfovx, hfovy, y0, r, start);
+            }
             goto fill_processorB;
+        }
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
                            Ny, enable_event_log, buffers.prev_positions, mag, position_method, eps);
@@ -320,28 +324,34 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
         fill_processorC:
         if (!active)
             continue;
-        if (buffers.PacketQueue.empty())
+        if (buffers.PacketQueue.empty()) {
+            if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                A_processed = true;
+                start = read_future(fut_resultA, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                    phi_prime_error, hfovx, hfovy, y0, r, start);
+            }
+            if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                B_processed = true;
+                start = read_future(fut_resultB, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                    phi_prime_error, hfovx, hfovy, y0, r, start);
+            }
             goto fill_processorC;
+        }
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
                            Ny, enable_event_log, buffers.prev_positions, mag, position_method, eps);
         buffers.PacketQueue.pop_front();
 
-        std::tie(image, positions, event_string, positions_string) = fut_resultA.get();
-        update_window("PLOT_EVENTS", image);
-        stageFile << positions_string;
-        eventFile << event_string;
-        start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
-        std::tie(image, positions, event_string, positions_string) = fut_resultB.get();
-        update_window("PLOT_EVENTS", image);
-        stageFile << positions_string;
-        eventFile << event_string;
-        start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
-        std::tie(image, positions, event_string, positions_string) = fut_resultC.get();
-        update_window("PLOT_EVENTS", image);
-        stageFile << positions_string;
-        eventFile << event_string;
-        start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
+        if (!A_processed) {
+            start = read_future(fut_resultA, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                phi_prime_error, hfovx, hfovy, y0, r, start);
+        }
+        if (!B_processed) {
+            start = read_future(fut_resultB, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                phi_prime_error, hfovx, hfovy, y0, r, start);
+        }
+        start = read_future(fut_resultC, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                            phi_prime_error, hfovx, hfovy, y0, r, start);
     }
     stageFile.close();
     eventFile.close();

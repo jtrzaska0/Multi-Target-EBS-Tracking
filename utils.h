@@ -321,3 +321,14 @@ std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* k
     }
     return last_start;
 }
+
+std::chrono::time_point<std::chrono::high_resolution_clock> read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>>& future, std::ofstream& stageFile, std::ofstream& eventFile,  Stage* kessler, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
+                                                                        float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double y0,
+                                                                        double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start) {
+    const auto [image, positions, event_string, positions_string] = future.get();
+    update_window("PLOT_EVENTS", image);
+    stageFile << positions_string;
+    eventFile << event_string;
+    return move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                       phi_prime_error, hfovx, hfovy, y0, r, last_start);
+}
