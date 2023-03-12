@@ -295,10 +295,7 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
     arma::mat positions;
     std::string event_string;
     std::string positions_string;
-    float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
-    double hfovx, hfovy, y0, r;
-    int nx, ny;
-    std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r) = cal_params;
+    auto const[nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r] = cal_params;
     auto start = std::chrono::high_resolution_clock::now();
     std::ofstream stageFile(event_file + "-stage.csv");
     std::ofstream eventFile(event_file + "-events.csv");

@@ -273,14 +273,12 @@ std::tuple<int, int, double, double, double, float, float, float, float, float, 
     std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params;
     if (kessler) {
         std::mutex mtx;
-        float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
-        double hfovx, hfovy, y0, r;
-        int nx, ny;
+        double r;
         kessler->handshake();
         std::cout << kessler->get_device_info().to_string();
         bool cal_active = true;
         std::thread pinger(ping, kessler, std::ref(mtx), std::ref(cal_active));
-        std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(kessler);
+        auto const [nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error] = calibrate_stage(kessler);
         printf("Enter approximate target distance in meters:\n");
         std::cin >> r;
         cal_active = false;
