@@ -138,10 +138,10 @@ arma::mat get_position(const std::string& method, const arma::mat& positions, ar
     return ret;
 }
 
-arma::mat calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat prev_positions, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file) {
+std::tuple<arma::mat, std::string> calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat prev_positions, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log) {
     int y_increment = (int)(mag * Ny / 2);
     int x_increment = (int)(y_increment * Nx / Ny);
-    std::ofstream stageFile(event_file + "-stage.csv");
+    std::string positions_string;
     arma::mat stage_positions;
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -193,10 +193,11 @@ arma::mat calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat prev_po
                       cv::Scalar(0, 0, 255),
                       thickness, cv::LINE_8);
 
-            if(enable_event_log)
-                stageFile << timestamp_ms.count() << ","
-                          << x_stage << ","
-                          << y_stage << "\n";
+            if(enable_event_log) {
+                positions_string += std::to_string(timestamp_ms.count()) + ",";
+                positions_string += std::to_string(x_stage) + ",";
+                positions_string += std::to_string(y_stage) + "\n";
+            }
         }
 
         cv::putText(cvmat,
@@ -215,9 +216,8 @@ arma::mat calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat prev_po
                     CV_RGB(118, 185, 0),
                     2);
     }
-
-    stageFile.close();
-    return stage_positions;
+    std::tuple<arma::mat, std::string> ret = {stage_positions, positions_string};
+    return ret;
 }
 
 void update_window(const std::string& winname, const cv::Mat& cvmat) {
@@ -227,12 +227,12 @@ void update_window(const std::string& winname, const cv::Mat& cvmat) {
     }
 }
 
-cv::Mat read_packets(std::vector<double> events, int Nx, int Ny, bool enable_event_log, const std::string& event_file) {
-    std::ofstream eventFile(event_file + "-events.csv");
+std::tuple<cv::Mat, std::string> read_packets(std::vector<double> events, int Nx, int Ny, bool enable_event_log) {
+    std::string event_string;
     cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
     if (events.empty()) {
-        eventFile.close();
-        return cvEvents;
+        std::tuple<cv::Mat, std::string> ret = {cvEvents, event_string};
+        return ret;
     }
     for (int i = 0; i < events.size(); i += 4) {
         double ts = events.at(i);
@@ -240,29 +240,32 @@ cv::Mat read_packets(std::vector<double> events, int Nx, int Ny, bool enable_eve
         int y = (int) events.at(i + 2);
         int pol = (int) events.at(i + 3);
         cvEvents.at<cv::Vec3b>(y, x) = pol ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
-        if(enable_event_log)
-            eventFile << ts << ","
-                      << x << ","
-                      << y << ","
-                      << pol << "\n";
+        if(enable_event_log) {
+            event_string += std::to_string(ts) + ",";
+            event_string += std::to_string(x) + ",";
+            event_string += std::to_string(y) + ",";
+            event_string += std::to_string(pol) + "\n";
+        }
     }
-
-    eventFile.close();
-    return cvEvents;
+    std::tuple<cv::Mat, std::string> ret = {cvEvents, event_string};
+    return ret;
 }
 
 // take a packet and run through the entire processing taskflow
 // return a cv mat for plotting and an arma mat for stage positions
-std::tuple<cv::Mat, arma::mat> process_packet(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking,
-                                              int Nx, int Ny, bool enable_event_log, const std::string& event_file,
-                                              arma::mat prev_positions, double mag, const std::string& position_method,
-                                              double eps) {
+std::tuple<cv::Mat, arma::mat, std::string, std::string> process_packet(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking,
+                                              int Nx, int Ny, bool enable_event_log, arma::mat prev_positions,
+                                              double mag, const std::string& position_method, double eps) {
+    cv::Mat event_image;
+    arma::mat stage_positions;
+    std::string event_string;
+    std::string positions_string;
     std::future<arma::mat> fut_positions = std::async(std::launch::async, run_tracker, events, dt, T, enable_tracking);
-    std::future<cv::Mat> fut_event_image = std::async(std::launch::async, read_packets, events, Nx, Ny, enable_event_log, event_file);
+    std::future<std::tuple<cv::Mat, std::string>> fut_event_image = std::async(std::launch::async, read_packets, events, Nx, Ny, enable_event_log);
     arma::mat positions = fut_positions.get();
-    cv::Mat event_image = fut_event_image.get();
-    arma::mat stage_positions = calculate_window(event_image, positions, std::move(prev_positions), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file);
-    std::tuple<cv::Mat, arma::mat> ret = {event_image, stage_positions};
+    std::tie(event_image, event_string) = fut_event_image.get();
+    std::tie(stage_positions, positions_string) = calculate_window(event_image, positions, std::move(prev_positions), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log);
+    std::tuple<cv::Mat, arma::mat, std::string, std::string> ret = {event_image, stage_positions, event_string, positions_string};
     return ret;
 }
 

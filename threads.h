@@ -293,17 +293,21 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params) {
     cv::Mat image;
     arma::mat positions;
+    std::string event_string;
+    std::string positions_string;
     float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
     double hfovx, hfovy, y0, r;
     int nx, ny;
     std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r) = cal_params;
     auto start = std::chrono::high_resolution_clock::now();
+    std::ofstream stageFile(event_file + "-stage.csv");
+    std::ofstream eventFile(event_file + "-events.csv");
     while (active) {
         if (buffers.PacketQueue.empty())
             continue;
-        std::future<std::tuple<cv::Mat, arma::mat>> fut_resultA =
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
+                           Ny, enable_event_log, buffers.prev_positions, mag, position_method, eps);
         buffers.PacketQueue.pop_front();
 
         fill_processorB:
@@ -311,9 +315,9 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
             continue;
         if (buffers.PacketQueue.empty())
             goto fill_processorB;
-        std::future<std::tuple<cv::Mat, arma::mat>> fut_resultB =
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
+                           Ny, enable_event_log, buffers.prev_positions, mag, position_method, eps);
         buffers.PacketQueue.pop_front();
 
         fill_processorC:
@@ -321,19 +325,27 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
             continue;
         if (buffers.PacketQueue.empty())
             goto fill_processorC;
-        std::future<std::tuple<cv::Mat, arma::mat>> fut_resultC =
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, event_file, buffers.prev_positions, mag, position_method, eps);
+                           Ny, enable_event_log, buffers.prev_positions, mag, position_method, eps);
         buffers.PacketQueue.pop_front();
 
-        std::tie(image, positions) = fut_resultA.get();
+        std::tie(image, positions, event_string, positions_string) = fut_resultA.get();
         update_window("PLOT_EVENTS", image);
+        stageFile << positions_string;
+        eventFile << event_string;
         start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
-        std::tie(image, positions) = fut_resultB.get();
+        std::tie(image, positions, event_string, positions_string) = fut_resultB.get();
         update_window("PLOT_EVENTS", image);
+        stageFile << positions_string;
+        eventFile << event_string;
         start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
-        std::tie(image, positions) = fut_resultC.get();
+        std::tie(image, positions, event_string, positions_string) = fut_resultC.get();
         update_window("PLOT_EVENTS", image);
+        stageFile << positions_string;
+        eventFile << event_string;
         start = move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, hfovx, hfovy, y0, r, start);
     }
+    stageFile.close();
+    eventFile.close();
 }
