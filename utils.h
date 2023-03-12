@@ -269,7 +269,7 @@ std::tuple<cv::Mat, arma::mat, std::string, std::string> process_packet(std::vec
     return ret;
 }
 
-std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> calibrate_stage(Stage* kessler) {
+std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> get_calibration(Stage* kessler) {
     std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params;
     if (kessler) {
         std::mutex mtx;
@@ -279,8 +279,8 @@ std::tuple<int, int, double, double, double, float, float, float, float, float, 
         kessler->handshake();
         std::cout << kessler->get_device_info().to_string();
         bool cal_active = true;
-        std::thread pinger(ping, std::ref(*kessler), std::ref(mtx), std::ref(cal_active));
-        std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(std::ref(*kessler));
+        std::thread pinger(ping, kessler, std::ref(mtx), std::ref(cal_active));
+        std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(kessler);
         printf("Enter approximate target distance in meters:\n");
         std::cin >> r;
         cal_active = false;

@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
         Stage kessler("192.168.50.1", 5520);
         kessler.handshake();
         std::cout << kessler.get_device_info().to_string();
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params = calibrate_stage(&kessler);
+        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params = get_calibration(&kessler);
         std::thread processor(processing_threads, std::ref(buffers), &kessler, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
         processor.join();
     }
     else {
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params = calibrate_stage(nullptr);
+        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params = get_calibration(nullptr);
         std::thread processor(processing_threads, std::ref(buffers), nullptr, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
