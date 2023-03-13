@@ -300,9 +300,9 @@ std::tuple<int, int, double, double, double, float, float, float, float, float, 
     return cal_params;
 }
 
-std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* kessler, double max_speed, const arma::mat& positions, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
+std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> move_stage (Stage* kessler, double max_speed, const arma::mat& positions, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
                  float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double y0,
-                 double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start) {
+                 double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan, float prev_tilt, double update) {
     if (kessler) {
         // Go to first position in list. Selecting between objects to be implemented later.
         double x = positions(0,0) - ((double) nx / 2);
@@ -318,7 +318,8 @@ std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* k
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> timestamp_ms = end - last_start;
-        if (timestamp_ms.count() > 100) {
+        bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, update);
+        if (timestamp_ms.count() > 100 && move) { // Move every 100 ms and if difference is large enough
             printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / PI,
                    phi_prime * 180 / PI);
             printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
@@ -327,24 +328,31 @@ std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* k
 
             kessler->set_position_speed_acceleration(2, pan_position, (float)max_speed*PAN_MAX_SPEED, PAN_MAX_ACC);
             kessler->set_position_speed_acceleration(3, tilt_position, (float)max_speed*TILT_MAX_SPEED, TILT_MAX_ACC);
-
-            return std::chrono::high_resolution_clock::now();
+            std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {std::chrono::high_resolution_clock::now(), pan_position, tilt_position};
+            return ret;
+        }
+        if (timestamp_ms.count() > 500) { // Ping if stage has been inactive
+            kessler->get_network_info();
+            std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {std::chrono::high_resolution_clock::now(), prev_pan, prev_tilt};
+            return ret;
         }
     }
-    return last_start;
+    std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {last_start, prev_pan, prev_tilt};
+    return ret;
 }
 
-std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int> read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>>& future,
+std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int, float, float> read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>>& future,
                                                                         std::ofstream& stageFile, std::ofstream& eventFile,  Stage* kessler,
                                                                         double max_speed, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
                                                                         float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double y0,
-                                                                        double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start) {
+                                                                        double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan, float prev_tilt, double update) {
     const auto [image, positions, event_string, positions_string, prev_x, prev_y, n_samples] = future.get();
     update_window("PLOT_EVENTS", image);
     stageFile << positions_string;
     eventFile << event_string;
-    auto end = move_stage(kessler, max_speed, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                          phi_prime_error, hfovx, hfovy, y0, r, last_start);
-    std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int> ret = {end, prev_x, prev_y, n_samples};
+    std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    std::tie(end, prev_pan, prev_tilt) = move_stage(kessler, max_speed, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                          phi_prime_error, hfovx, hfovy, y0, r, last_start, prev_pan, prev_tilt, update);
+    std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int, float, float> ret = {end, prev_x, prev_y, n_samples, prev_pan, prev_tilt};
     return ret;
 }
