@@ -289,20 +289,24 @@ int read_davis (Buffers& buffers, const json& noise_params, bool verbose, bool e
 
 void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, double dt, DBSCAN_KNN T, bool enable_tracking,
                        int Nx, int Ny, bool enable_event_log, const std::string& event_file,
-                       double mag, const std::string& position_method, double eps, const bool& active,
+                       double mag, const std::string& position_method, double eps, bool report_average, const bool& active,
                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params) {
     auto const[nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r] = cal_params;
     auto start = std::chrono::high_resolution_clock::now();
     std::ofstream stageFile(event_file + "-stage.csv");
     std::ofstream eventFile(event_file + "-events.csv");
+    std::binary_semaphore update_positions(1);
+    int prev_x = 0;
+    int prev_y = 0;
+    int n_samples = 0;
     while (active) {
         bool A_processed = false;
         bool B_processed = false;
         if (buffers.PacketQueue.empty())
             continue;
-        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultA =
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, buffers.prev_positions, mag, position_method, eps);
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
         buffers.PacketQueue.pop_front();
 
         fill_processorB:
@@ -311,14 +315,14 @@ void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, doub
         if (buffers.PacketQueue.empty()) {
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
-                start = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                std::tie(start, prev_x, prev_y, n_samples) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                    phi_prime_error, hfovx, hfovy, y0, r, start);
             }
             goto fill_processorB;
         }
-        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultB =
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, buffers.prev_positions, mag, position_method, eps);
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
         buffers.PacketQueue.pop_front();
 
         fill_processorC:
@@ -327,30 +331,30 @@ void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, doub
         if (buffers.PacketQueue.empty()) {
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
-                start = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                std::tie(start, prev_x, prev_y, n_samples) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                     phi_prime_error, hfovx, hfovy, y0, r, start);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
-                start = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                std::tie(start, prev_x, prev_y, n_samples) = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                     phi_prime_error, hfovx, hfovy, y0, r, start);
             }
             goto fill_processorC;
         }
-        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>> fut_resultC =
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, buffers.prev_positions, mag, position_method, eps);
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
         buffers.PacketQueue.pop_front();
 
         if (!A_processed) {
-            start = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+            std::tie(start, prev_x, prev_y, n_samples) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                 phi_prime_error, hfovx, hfovy, y0, r, start);
         }
         if (!B_processed) {
-            start = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+            std::tie(start, prev_x, prev_y, n_samples) = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                 phi_prime_error, hfovx, hfovy, y0, r, start);
         }
-        start = read_future(fut_resultC, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+        std::tie(start, prev_x, prev_y, n_samples) = read_future(fut_resultC, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                             phi_prime_error, hfovx, hfovy, y0, r, start);
     }
     stageFile.close();
