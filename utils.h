@@ -288,7 +288,7 @@ std::tuple<int, int, double, double, double, float, float, float, float, float, 
     return cal_params;
 }
 
-std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* kessler, const arma::mat& positions, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
+std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* kessler, double max_speed, const arma::mat& positions, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
                  float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double y0,
                  double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start) {
     if (kessler) {
@@ -313,8 +313,8 @@ std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* k
                    pan_position, end_pan - begin_pan, tilt_position, end_tilt - begin_tilt);
             printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
 
-            kessler->set_position_speed_acceleration(2, pan_position, (float)0.6*PAN_MAX_SPEED, PAN_MAX_ACC);
-            kessler->set_position_speed_acceleration(3, tilt_position, (float)0.6*TILT_MAX_SPEED, TILT_MAX_ACC);
+            kessler->set_position_speed_acceleration(2, pan_position, (float)max_speed*PAN_MAX_SPEED, PAN_MAX_ACC);
+            kessler->set_position_speed_acceleration(3, tilt_position, (float)max_speed*TILT_MAX_SPEED, TILT_MAX_ACC);
 
             return std::chrono::high_resolution_clock::now();
         }
@@ -322,13 +322,15 @@ std::chrono::time_point<std::chrono::high_resolution_clock> move_stage (Stage* k
     return last_start;
 }
 
-std::chrono::time_point<std::chrono::high_resolution_clock> read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>>& future, std::ofstream& stageFile, std::ofstream& eventFile,  Stage* kessler, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
+std::chrono::time_point<std::chrono::high_resolution_clock> read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string>>& future,
+                                                                        std::ofstream& stageFile, std::ofstream& eventFile,  Stage* kessler,
+                                                                        double max_speed, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
                                                                         float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double y0,
                                                                         double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start) {
     const auto [image, positions, event_string, positions_string] = future.get();
     update_window("PLOT_EVENTS", image);
     stageFile << positions_string;
     eventFile << event_string;
-    return move_stage(kessler, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+    return move_stage(kessler, max_speed, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                        phi_prime_error, hfovx, hfovy, y0, r, last_start);
 }

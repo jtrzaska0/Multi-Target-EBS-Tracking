@@ -287,7 +287,7 @@ int read_davis (Buffers& buffers, const json& noise_params, bool verbose, bool e
     return (EXIT_SUCCESS);
 }
 
-void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN T, bool enable_tracking,
+void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, double dt, DBSCAN_KNN T, bool enable_tracking,
                        int Nx, int Ny, bool enable_event_log, const std::string& event_file,
                        double mag, const std::string& position_method, double eps, const bool& active,
                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params) {
@@ -311,7 +311,7 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
         if (buffers.PacketQueue.empty()) {
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
-                start = read_future(fut_resultA, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                start = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                    phi_prime_error, hfovx, hfovy, y0, r, start);
             }
             goto fill_processorB;
@@ -327,12 +327,12 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
         if (buffers.PacketQueue.empty()) {
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
-                start = read_future(fut_resultA, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                start = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                     phi_prime_error, hfovx, hfovy, y0, r, start);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
-                start = read_future(fut_resultB, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                start = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                     phi_prime_error, hfovx, hfovy, y0, r, start);
             }
             goto fill_processorC;
@@ -343,14 +343,14 @@ void processing_threads(Buffers& buffers, Stage* kessler, double dt, DBSCAN_KNN 
         buffers.PacketQueue.pop_front();
 
         if (!A_processed) {
-            start = read_future(fut_resultA, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+            start = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                 phi_prime_error, hfovx, hfovy, y0, r, start);
         }
         if (!B_processed) {
-            start = read_future(fut_resultB, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+            start = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                                 phi_prime_error, hfovx, hfovy, y0, r, start);
         }
-        start = read_future(fut_resultC, stageFile, eventFile, kessler, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+        start = read_future(fut_resultC, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                             phi_prime_error, hfovx, hfovy, y0, r, start);
     }
     stageFile.close();

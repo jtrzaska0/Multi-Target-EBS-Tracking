@@ -13,7 +13,8 @@
     "REPORT_AVERAGE": true,
     "VERBOSE": true,
     "BUFFER_SIZE": 5,
-    "HISTORY_SIZE": 12
+    "HISTORY_SIZE": 12,
+    "MAX_SPEED": 1
   },
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,
