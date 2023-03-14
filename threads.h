@@ -22,29 +22,15 @@
 using json = nlohmann::json;
 
 static std::atomic_bool globalShutdown(false);
-std::counting_semaphore<1> prepareStage(0);
 
 class Buffers {
     public:
-        boost::circular_buffer<std::vector<double>> PlottingPacketQueue;
-        boost::circular_buffer<std::vector<double>> TrackingVectorQueue;
-        boost::circular_buffer<cv::Mat> CVMatrixQueue;
-        boost::circular_buffer<std::vector<double>> PositionsVectorQueue;
-        boost::circular_buffer<arma::mat> PlotPositionsMatrixQueue;
-        boost::circular_buffer<arma::mat> StagePositionsMatrixQueue;
-        arma::mat previous_positions_plot;
-        arma::mat previous_positions_stage;
+        boost::circular_buffer<std::vector<double>> PacketQueue;
+        arma::mat prev_positions;
         Buffers(const int buffer_size, const int history_size){
-            PlottingPacketQueue.set_capacity(buffer_size);
-            TrackingVectorQueue.set_capacity(buffer_size);
-            CVMatrixQueue.set_capacity(buffer_size);
-            PositionsVectorQueue.set_capacity(buffer_size);
-            PlotPositionsMatrixQueue.set_capacity(buffer_size);
-            StagePositionsMatrixQueue.set_capacity(buffer_size);
-            previous_positions_plot.set_size(2, history_size);
-            previous_positions_plot.fill(arma::fill::zeros);
-            previous_positions_stage.set_size(2, history_size);
-            previous_positions_stage.fill(arma::fill::zeros);
+            PacketQueue.set_capacity(buffer_size);
+            prev_positions.set_size(2, history_size);
+            prev_positions.fill(arma::fill::zeros);
         }
 };
 
@@ -61,21 +47,8 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer (Buffers& buffers, int num_packets, bool enable_tracking, const json& noise_params, const bool& active) {
+int read_xplorer (Buffers& buffers, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
     // Install signal handler for global shutdown.
-#if defined(_WIN32)
-    if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGTERM. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-
-	if (signal(SIGINT, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGINT. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-#else
     struct sigaction shutdownAction{};
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
@@ -95,7 +68,6 @@ int read_xplorer (Buffers& buffers, int num_packets, bool enable_tracking, const
                           "Failed to set signal handler for SIGINT. Error: %d.", errno);
         return (EXIT_FAILURE);
     }
-#endif
 
     // Open a DAVIS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
     auto handle = libcaer::devices::dvXplorer(1);
@@ -135,11 +107,12 @@ int read_xplorer (Buffers& buffers, int num_packets, bool enable_tracking, const
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
-    int processed = 0;
-    std::vector<double> events;
+    printf("Press space to stop...\n");
+    auto start = std::chrono::high_resolution_clock::now();
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
+        std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
-        if (packetContainer == nullptr) {
+        if (packetContainer == nullptr || buffers.PacketQueue.full()) {
             continue;
         }
         for (auto &packet: *packetContainer) {
@@ -151,7 +124,8 @@ int read_xplorer (Buffers& buffers, int num_packets, bool enable_tracking, const
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
-                dvsNoiseFilter.apply(*polarity);
+                if(enable_filter)
+                    dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
                     // Discard invalid events (filtered out).
@@ -164,16 +138,17 @@ int read_xplorer (Buffers& buffers, int num_packets, bool enable_tracking, const
                     events.push_back(e.getY());
                     events.push_back(e.getPolarity());
                 }
-                processed += 1;
-                if (processed >= num_packets && !events.empty()) {
-                    if (enable_tracking) {
-                        buffers.TrackingVectorQueue.push_back(events);
-                    }
-                    buffers.PlottingPacketQueue.push_back(events);
-                    events.clear();
-                    processed = 0;
-                }
             }
+        }
+        buffers.PacketQueue.push_back(events);
+        if (key_is_pressed(XK_space)) {
+            active = false;
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> timestamp_ms = end - start;
+        if (timestamp_ms.count() > 2000 && verbose) {
+            start = std::chrono::high_resolution_clock::now();
+            printf("Packet Queue: %zu\n", buffers.PacketQueue.size());
         }
     }
     handle.dataStop();
@@ -184,21 +159,8 @@ int read_xplorer (Buffers& buffers, int num_packets, bool enable_tracking, const
     return (EXIT_SUCCESS);
 }
 
-int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const json& noise_params, const bool& active) {
+int read_davis (Buffers& buffers, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
     // Install signal handler for global shutdown.
-#if defined(_WIN32)
-    if (signal(SIGTERM, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGTERM. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-
-	if (signal(SIGINT, &globalShutdownSignalHandler) == SIG_ERR) {
-		libcaer::log::log(libcaer::log::logLevel::CRITICAL, "ShutdownAction",
-			"Failed to set signal handler for SIGINT. Error: %d.", errno);
-		return (EXIT_FAILURE);
-	}
-#else
     struct sigaction shutdownAction{};
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
@@ -218,7 +180,6 @@ int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const j
                           "Failed to set signal handler for SIGINT. Error: %d.", errno);
         return (EXIT_FAILURE);
     }
-#endif
 
     // Open a DAVIS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
     libcaer::devices::davis davisHandle = libcaer::devices::davis(1);
@@ -235,7 +196,7 @@ int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const j
     davisHandle.sendDefaultConfig();
 
     // Enable hardware filters if present.
-    if (davis_info.dvsHasBackgroundActivityFilter) {
+    if (davis_info.dvsHasBackgroundActivityFilter && enable_filter) {
         davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME, noise_params.value("DAVIS_BACKGROUND_ACTIVITY_TIME", 8));
         davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY, noise_params.value("DAVIS_BACKGROUND_ACTIVITY", true));
 
@@ -273,11 +234,12 @@ int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const j
     davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_GYROSCOPE, false);
     davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_TEMPERATURE, false);
 
-    int processed = 0;
-    std::vector<double> events;
+    printf("Press space to stop...\n");
+    auto start = std::chrono::high_resolution_clock::now();
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
+        std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
-        if (packetContainer == nullptr) {
+        if (packetContainer == nullptr || buffers.PacketQueue.full()) {
             continue;
         }
 
@@ -290,7 +252,8 @@ int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const j
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
-                dvsNoiseFilter.apply(*polarity);
+                if (enable_filter)
+                    dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
                     // Discard invalid events (filtered out).
@@ -303,16 +266,17 @@ int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const j
                     events.push_back(e.getY());
                     events.push_back(e.getPolarity());
                 }
-                processed += 1;
-                if (processed >= num_packets && !events.empty()) {
-                    if (enable_tracking) {
-                        buffers.TrackingVectorQueue.push_back(events);
-                    }
-                    buffers.PlottingPacketQueue.push_back(events);
-                    events.clear();
-                    processed = 0;
-                }
             }
+        }
+        buffers.PacketQueue.push_back(events);
+        if (key_is_pressed(XK_space)) {
+            active = false;
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> timestamp_ms = end - start;
+        if (timestamp_ms.count() > 2000 && verbose) {
+            start = std::chrono::high_resolution_clock::now();
+            printf("Packet Queue: %zu\n", buffers.PacketQueue.size());
         }
     }
     davisHandle.dataStop();
@@ -323,374 +287,78 @@ int read_davis (Buffers& buffers, int num_packets, bool enable_tracking, const j
     return (EXIT_SUCCESS);
 }
 
-void tracker (Buffers& buffers, double dt, DBSCAN_KNN T, const bool&active) {
-    while (active) {
-        if (buffers.TrackingVectorQueue.empty())
-            continue;
-        // double free or corruption (out)
-        auto events = buffers.TrackingVectorQueue.front();
-        std::vector<double> positions;
-        //double free or corruption (!prev)
-        if (events.empty()) {
-            buffers.PositionsVectorQueue.push_back(positions);
-            buffers.TrackingVectorQueue.pop_front();
-            continue;
-        }
-        //free(): invalid pointer
-        // The detector takes a pointer to events.
-        double *mem{events.data()};
-        // Starting time.
-        double t0{events[0]};
-
-        // Keep sizes of the vectors in variables.
-        int nEvents{(int) events.size() / 4};
-        while (true) {
-            // Read all events in one integration time.
-            double t1{t0 + dt};
-            int N{0};
-            for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
-                if (mem[4 * N] >= t1)
-                    break;
-
-            // Advance starting time.
-            t0 = t1;
-            // Feed events to the detector/tracker.
-            if (N > 0) {
-                //double free or corruption (!prev), double free or corruption (out), corrupted size vs. prev_size while consolidating
-                T(mem, N);
-                Eigen::MatrixXd targets{T.currentTracks()};
-
-                // Break once all events have been used and push last positions
-                if (t0 > events[4 * (nEvents - 1)]) {
-                    for (int i{0}; i < targets.rows(); ++i) {
-                        positions.push_back(targets(i, 0));
-                        positions.push_back(targets(i, 1));
-                    }
-                    break;
-                }
-                // Evolve tracks in time.
-                T.predict();
-
-                // Update eventIdx
-                mem += 4 * N;
-            }
-        }
-        //double free or corruption (!prev), corrupted size vs. prev_size while consolidating, free(): invalid pointer
-        buffers.PositionsVectorQueue.push_back(positions);
-        buffers.TrackingVectorQueue.pop_front();
-    }
-}
-
-void positions_vector_to_matrix(Buffers& buffers, const bool& active) {
-    while (active) {
-        if (buffers.PositionsVectorQueue.empty())
-            continue;
-        auto positions = buffers.PositionsVectorQueue.front();
-        int n_positions = (int)(positions.size() / 2);
-        arma::mat positions_mat;
-        if (n_positions > 0) {
-            positions_mat.zeros(2, n_positions);
-            for(int i = 0; i < n_positions; i++) {
-                positions_mat(0, i) = positions[2*i];
-                positions_mat(1, i) = positions[2*i+1];
-            }
-        }
-        buffers.StagePositionsMatrixQueue.push_back(positions_mat);
-        buffers.PlotPositionsMatrixQueue.push_back(positions_mat);
-        buffers.PositionsVectorQueue.pop_front();
-    }
-}
-
-void plot_events(Buffers& buffers, double mag, int Nx, int Ny, const std::string& position_method, double eps, bool enable_tracking, bool enable_event_log, const std::string& event_file, bool report_average, const bool& active) {
-    int y_increment = (int)(mag * Ny / 2);
-    int x_increment = (int)(y_increment * Nx / Ny);
-    int thickness = 2;
-    int n_samples = 0;
+void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, double dt, DBSCAN_KNN T, bool enable_tracking,
+                       int Nx, int Ny, bool enable_event_log, const std::string& event_file,
+                       double mag, const std::string& position_method, double eps, bool report_average, double update, const bool& active,
+                       std::tuple<int, int, double, double, double, float, float, float, float, float, float, double> cal_params) {
+    auto const[nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r] = cal_params;
+    auto start = std::chrono::high_resolution_clock::now();
+    std::ofstream stageFile(event_file + "-stage.csv");
+    std::ofstream eventFile(event_file + "-events.csv");
+    std::binary_semaphore update_positions(1);
     int prev_x = 0;
     int prev_y = 0;
-    std::ofstream stageFile(event_file + "-stage.csv");
-    auto start = std::chrono::high_resolution_clock::now();
-
-    cv::startWindowThread();
-    cv::namedWindow("PLOT_EVENTS",
-                    cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
-
+    int n_samples = 0;
+    float prev_pan = 0;
+    float prev_tilt = 0;
     while (active) {
-        // Do nothing until there is a matrix to process in each queue
-        if (buffers.CVMatrixQueue.empty() || (enable_tracking && buffers.PlotPositionsMatrixQueue.empty()))
+        bool A_processed = false;
+        bool B_processed = false;
+        if (buffers.PacketQueue.empty())
             continue;
-        auto cvmat = buffers.CVMatrixQueue.front();
-        if (enable_tracking) {
-            int x_min, x_max, y_min, y_max;
-            auto positions = buffers.PlotPositionsMatrixQueue.front();
-            auto stage_positions = get_position(position_method, positions, buffers.previous_positions_plot, eps);
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultA =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
+        buffers.PacketQueue.pop_front();
 
-            for (int i=0; i < (int)positions.n_cols; i++) {
-                int x = (int)positions(0,i);
-                int y = (int)positions(1,i);
-                if (x == -10 || y == -10) {
-                    continue;
-                }
-
-                y_min = std::max(y - y_increment, 0);
-                x_min = std::max(x - x_increment, 0);
-                y_max = std::min(y + y_increment, Ny - 1);
-                x_max = std::min(x + x_increment, Nx - 1);
-
-                cv::Point p1(x_min, y_min);
-                cv::Point p2(x_max, y_max);
-                rectangle(cvmat, p1, p2,
-                          cv::Scalar(255, 0, 0),
-                          thickness, cv::LINE_8);
+        fill_processorB:
+        if (!active)
+            continue;
+        if (buffers.PacketQueue.empty()) {
+            if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                A_processed = true;
+                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                   phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update);
             }
-
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> timestamp_ms = end - start;
-            for (int i = 0; i < stage_positions.n_cols; i++) {
-                int x_stage = (int)stage_positions(0, i);
-                int y_stage = (int)stage_positions(1, i);
-                y_min = std::max(y_stage - y_increment, 0);
-                x_min = std::max(x_stage - x_increment, 0);
-                y_max = std::min(y_stage + y_increment, Ny - 1);
-                x_max = std::min(x_stage + x_increment, Nx - 1);
-
-                cv::Point p1_stage(x_min, y_min);
-                cv::Point p2_stage(x_max, y_max);
-
-                rectangle(cvmat, p1_stage, p2_stage,
-                          cv::Scalar(0, 0, 255),
-                          thickness, cv::LINE_8);
-
-                if(enable_event_log)
-                    stageFile << timestamp_ms.count() << ","
-                              << x_stage << ","
-                              << y_stage << "\n";
-            }
-
-            cv::putText(cvmat,
-                        std::string("Objects: ") + std::to_string((int)(stage_positions.size()/2)), //text
-                        cv::Point((int)(0.05*Nx),(int)(0.95*Ny)),
-                        cv::FONT_HERSHEY_DUPLEX,
-                        0.5,
-                        CV_RGB(118, 185, 0),
-                        2);
-
-            int first_x = 0;
-            int first_y = 0;
-            if (stage_positions.n_cols > 0) {
-                n_samples += 1;
-                first_x = (int) (stage_positions(0, 0) - ((float) Nx / 2));
-                first_y = (int) (((float) Ny / 2) - stage_positions(1, 0));
-                if (report_average) {
-                    first_x = (int)update_average(prev_x, first_x, n_samples);
-                    first_y = (int)update_average(prev_y, first_y, n_samples);
-                    if (n_samples > 500)
-                        n_samples = 0;
-                }
-            }
-            cv::putText(cvmat,
-                        std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) + std::string(")"), //text
-                        cv::Point((int)(0.80*Nx), (int)(0.95*Ny)),
-                        cv::FONT_HERSHEY_DUPLEX,
-                        0.5,
-                        CV_RGB(118, 185, 0),
-                        2);
-
-            prev_x = first_x;
-            prev_y = first_y;
-            buffers.PlotPositionsMatrixQueue.pop_front();
+            goto fill_processorB;
         }
-        if (cvmat.rows > 0 && cvmat.cols > 0 ) {
-            cv::imshow("PLOT_EVENTS", cvmat);
-            cv::waitKey(1);
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultB =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
+        buffers.PacketQueue.pop_front();
+
+        fill_processorC:
+        if (!active)
+            continue;
+        if (buffers.PacketQueue.empty()) {
+            if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                A_processed = true;
+                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                    phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update);
+            }
+            if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                B_processed = true;
+                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                    phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update);
+            }
+            goto fill_processorC;
         }
-        buffers.CVMatrixQueue.pop_front();
+        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultC =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
+        buffers.PacketQueue.pop_front();
+
+        if (!A_processed) {
+            std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update);
+        }
+        if (!B_processed) {
+            std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                                phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update);
+        }
+        std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultC, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+                            phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update);
     }
     stageFile.close();
-    cv::destroyWindow("PLOT_EVENTS");
-}
-
-void read_packets(Buffers& buffers, int Nx, int Ny, bool enable_event_log, const std::string& event_file, const bool& active) {
-    std::ofstream eventFile(event_file + "-events.csv");
-    while (active) {
-        if (buffers.PlottingPacketQueue.empty())
-            continue;
-        auto events = buffers.PlottingPacketQueue.front();
-        cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
-        if (events.empty()) {
-            buffers.CVMatrixQueue.push_back(cvEvents);
-            buffers.PlottingPacketQueue.pop_front();
-            continue;
-        }
-        for (int i = 0; i < events.size(); i += 4) {
-            double ts = events.at(i);
-            int x = (int) events.at(i + 1);
-            int y = (int) events.at(i + 2);
-            int pol = (int) events.at(i + 3);
-            cvEvents.at<cv::Vec3b>(y, x) = pol ? cv::Vec3b{255, 255, 255} : cv::Vec3b{0, 0, 0};
-            if(enable_event_log)
-                eventFile << ts << ","
-                          << x << ","
-                          << y << ","
-                          << pol << "\n";
-        }
-        if(enable_event_log)
-            eventFile << "\n";
-        buffers.CVMatrixQueue.push_back(cvEvents);
-        buffers.PlottingPacketQueue.pop_front();
-    }
     eventFile.close();
-}
-
-void runner(Buffers& buffers, std::thread& reader, std::thread& plotter, std::thread& tracker, std::thread& imager, std::thread& matrix_writer, bool verbose, bool& active) {
-    printf("Press space to stop...\n");
-    int i = 0;
-    while(active) {
-        if (key_is_pressed(XK_space)) {
-            active = false;
-        }
-        if (i > 20) {
-            i = 0;
-            if (verbose) {
-                printf("Queue Sizes:\n");
-                printf("------------\n");
-                printf("Plotting Queue: %zu\n", buffers.PlottingPacketQueue.size());
-                printf("Event Vector Queue: %zu\n", buffers.TrackingVectorQueue.size());
-                printf("Image Matrix Queue: %zu\n", buffers.CVMatrixQueue.size());
-                printf("Matrix Writer Queue: %zu\n", buffers.PositionsVectorQueue.size());
-                printf("Plot Position Queue: %zu\n", buffers.PlotPositionsMatrixQueue.size());
-                printf("Stage Position Queue: %zu\n\n", buffers.StagePositionsMatrixQueue.size());
-            }
-        }
-        i += 1;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    reader.join();
-    plotter.join();
-    tracker.join();
-    imager.join();
-    matrix_writer.join();
-}
-
-void launch_threads(Buffers& buffers, const std::string& device_type, double integrationtime, int num_packets, bool enable_tracking, const std::string& position_method, double eps, bool enable_event_log, std::string event_file, double mag, json noise_params, bool report_average, bool verbose, bool& active) {
-    /**Create an Algorithm object here.**/
-    // Matrix initializer
-    // DBSCAN
-    Eigen::MatrixXd invals {Eigen::MatrixXd::Zero(1, 4)};
-
-    // Mean Shift
-    invals(0,0) = 5.2;
-    invals(0,1) = 9;
-    invals(0,2) = 74;
-    invals(0,3) = 1.2;
-    // Model initializer
-    double DT = integrationtime;
-    double p3 = pow(DT, 3) / 3;
-    double p2 = pow(DT, 2) / 2;
-
-    Eigen::MatrixXd P {{16, 0, 0, 0}, {0, 16, 0, 0}, {0, 0, 9, 0}, {0, 0, 0, 9}};
-    Eigen::MatrixXd F {{1, 0, DT, 0}, {0, 1, 0, DT}, {0, 0, 1, 0}, {0, 0, 0, 1}};
-    Eigen::MatrixXd Q {{p3, 0, p2, 0}, {0, p3, 0, p2}, {p2, 0, DT, 0}, {0, p2, 0, DT}};
-    Eigen::MatrixXd H {{1, 0, 0, 0}, {0, 1, 0, 0}};
-    Eigen::MatrixXd R {{7, 0}, {0, 7}};
-
-    // Define the model.
-    KModel k_model {.dt = DT, .P = P, .F = F, .Q = Q, .H = H, .R = R};
-    // Algo initializer
-    DBSCAN_KNN algo(invals, k_model);
-
-    if (device_type == "xplorer") {
-        int Nx = 640;
-        int Ny = 480;
-        std::thread writing_thread(read_xplorer, std::ref(buffers), num_packets, enable_tracking, noise_params, std::ref(active));
-        std::thread plotting_thread(read_packets, std::ref(buffers), Nx, Ny, enable_event_log, event_file, std::ref(active));
-        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, std::ref(active));
-        std::thread matrix_thread(positions_vector_to_matrix, std::ref(buffers), std::ref(active));
-        std::thread image_thread(plot_events, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
-        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), verbose, std::ref(active));
-        running_thread.join();
-    }
-    else {
-        int Nx = 346;
-        int Ny = 260;
-        std::thread writing_thread(read_davis, std::ref(buffers), num_packets, enable_tracking, noise_params, std::ref(active));
-        std::thread plotting_thread(read_packets, std::ref(buffers), Nx, Ny, enable_event_log, event_file, std::ref(active));
-        std::thread tracking_thread(tracker, std::ref(buffers), integrationtime, algo, std::ref(active));
-        std::thread matrix_thread(positions_vector_to_matrix, std::ref(buffers), std::ref(active));
-        std::thread image_thread(plot_events, std::ref(buffers), mag, Nx, Ny, position_method, eps, enable_tracking, enable_event_log, event_file, report_average, std::ref(active));
-        std::thread running_thread(runner, std::ref(buffers), std::ref(writing_thread), std::ref(plotting_thread), std::ref(tracking_thread), std::ref(image_thread), std::ref(matrix_thread), verbose, std::ref(active));
-        running_thread.join();
-    }
-}
-
-void drive_stage(Buffers& buffers, const std::string& position_method, double eps, bool enable_stage, double stage_update, bool& active) {
-    if (enable_stage) {
-        std::mutex mtx;
-        float begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error;
-        float prev_pan_position = 0;
-        float prev_tilt_position = 0;
-        double hfovx, hfovy, y0, r;
-        int nx, ny;
-        Stage kessler("192.168.50.1", 5520);
-        kessler.handshake();
-        std::cout << kessler.get_device_info().to_string();
-        std::thread pinger(ping, std::ref(kessler), std::ref(mtx), std::ref(active));
-        std::tie(nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error) = calibrate_stage(std::ref(kessler));
-        printf("Enter approximate target distance in meters:\n");
-        std::cin >> r;
-        prepareStage.release();
-        auto start = std::chrono::high_resolution_clock::now();
-        while (active) {
-            if (buffers.StagePositionsMatrixQueue.empty())
-                continue;
-            auto positions = buffers.StagePositionsMatrixQueue.front();
-            if (positions.n_cols > 0) { // Stay in place if no object found
-                auto stage_positions = get_position(position_method, positions, buffers.previous_positions_stage, eps);
-
-                // Go to first position in list. Selecting between objects to be implemented later.
-                double x = stage_positions(0,0) - ((double) nx / 2);
-                double y = ((double) ny / 2) - stage_positions(1,0);
-
-                double theta = get_theta(y, ny, hfovy);
-                double phi = get_phi(x, nx, hfovx);
-                double theta_prime = get_theta_prime(phi, theta, y0, r, theta_prime_error);
-                double phi_prime = get_phi_prime(phi, theta, y0, r, phi_prime_error);
-
-                float pan_position = get_pan_position(begin_pan, end_pan, phi_prime);
-                float tilt_position = get_tilt_position(begin_tilt, end_tilt, theta_prime);
-                auto end = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<double, std::milli> since_last = end - start;
-
-                bool move = move_stage(pan_position, prev_pan_position, tilt_position, prev_tilt_position, stage_update);
-
-                if (since_last.count() > 50 && move) {
-                    printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / PI,
-                           phi_prime * 180 / PI);
-                    printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
-                           pan_position, end_pan - begin_pan, tilt_position, end_tilt - begin_tilt);
-                    printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
-
-                    mtx.lock();
-                    kessler.set_position_speed_acceleration(2, pan_position, (float)0.6*PAN_MAX_SPEED, PAN_MAX_ACC);
-                    kessler.set_position_speed_acceleration(3, tilt_position, (float)0.6*TILT_MAX_SPEED, TILT_MAX_ACC);
-                    mtx.unlock();
-
-                    prev_pan_position = pan_position;
-                    prev_tilt_position = tilt_position;
-
-                    start = std::chrono::high_resolution_clock::now();
-                }
-            }
-            buffers.StagePositionsMatrixQueue.pop_front();
-        }
-        pinger.join();
-    }
-    else {
-        prepareStage.release();
-        while (active) {
-            if (!buffers.StagePositionsMatrixQueue.empty()) {
-                buffers.StagePositionsMatrixQueue.pop_front();
-            }
-        }
-    }
 }
