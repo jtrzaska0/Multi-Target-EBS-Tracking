@@ -319,32 +319,39 @@ std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, f
                  double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan, float prev_tilt, double update,
                  float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle) {
     if (kessler) {
-        // Go to first position in list. Selecting between objects to be implemented later.
-        double x = positions(0,0) - ((double) nx / 2);
-        double y = ((double) ny / 2) - positions(1,0);
-
-        double theta = get_theta(y, ny, hfovy);
-        double phi = get_phi(x, nx, hfovx);
-        double theta_prime = get_theta_prime(phi, theta, sep, r, theta_prime_error);
-        double phi_prime = get_phi_prime(phi, theta, sep, r, phi_prime_error);
-
-        float pan_position = get_motor_position(begin_pan, end_pan, begin_pan_angle, end_pan_angle, phi_prime);
-        float tilt_position = get_motor_position(begin_tilt, end_tilt, begin_tilt_angle, end_tilt_angle, theta_prime);
-
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> timestamp_ms = end - last_start;
-        bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, update);
-        if (timestamp_ms.count() > 100 && move) { // Move every 100 ms and if difference is large enough
-            printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI,
-                   phi_prime * 180 / M_PI);
-            printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
-                   pan_position, end_pan - begin_pan, tilt_position, end_tilt - begin_tilt);
-            printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
+        if (positions.n_cols > 0) {
+            // Go to first position in list. Selecting between objects to be implemented later.
+            double x = positions(0, 0) - ((double) nx / 2);
+            double y = ((double) ny / 2) - positions(1, 0);
 
-            kessler->set_position_speed_acceleration(2, pan_position, (float)max_speed*PAN_MAX_SPEED, PAN_MAX_ACC);
-            kessler->set_position_speed_acceleration(3, tilt_position, (float)max_speed*TILT_MAX_SPEED, TILT_MAX_ACC);
-            std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {std::chrono::high_resolution_clock::now(), pan_position, tilt_position};
-            return ret;
+            double theta = get_theta(y, ny, hfovy);
+            double phi = get_phi(x, nx, hfovx);
+            double theta_prime = get_theta_prime(phi, theta, sep, r, theta_prime_error);
+            double phi_prime = get_phi_prime(phi, theta, sep, r, phi_prime_error);
+
+            float pan_position = get_motor_position(begin_pan, end_pan, begin_pan_angle, end_pan_angle, phi_prime);
+            float tilt_position = get_motor_position(begin_tilt, end_tilt, begin_tilt_angle, end_tilt_angle,
+                                                     theta_prime);
+
+
+            bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, update);
+            if (timestamp_ms.count() > 100 && move) { // Move every 100 ms and if difference is large enough
+                printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI,
+                       phi_prime * 180 / M_PI);
+                printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
+                       pan_position, end_pan - begin_pan, tilt_position, end_tilt - begin_tilt);
+                printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
+
+                kessler->set_position_speed_acceleration(2, pan_position, (float) max_speed * PAN_MAX_SPEED,
+                                                         PAN_MAX_ACC);
+                kessler->set_position_speed_acceleration(3, tilt_position, (float) max_speed * TILT_MAX_SPEED,
+                                                         TILT_MAX_ACC);
+                std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {
+                        std::chrono::high_resolution_clock::now(), pan_position, tilt_position};
+                return ret;
+            }
         }
         if (timestamp_ms.count() > 500) { // Ping if stage has been inactive
             kessler->get_network_info();
