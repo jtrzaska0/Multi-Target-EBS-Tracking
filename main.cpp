@@ -103,11 +103,11 @@ int main(int argc, char* argv[]) {
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
 
     if (enable_stage) {
-        Stage kessler("192.168.50.1", 5520);
-        kessler.handshake();
-        std::cout << kessler.get_device_info().to_string();
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(&kessler, stage_params);
-        std::thread processor(processing_threads, std::ref(buffers), &kessler, max_speed, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
+        Stage stage("192.168.50.1", 5520);
+        stage.handshake();
+        std::cout << stage.get_device_info().to_string();
+        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(&stage, stage_params);
+        std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
         else
