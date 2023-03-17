@@ -3,9 +3,7 @@
     "DEVICE_TYPE": "xplorer",
     "INTEGRATION_TIME_MS": 2,
     "ENABLE_TRACKING": true,
-    "ENABLE_STAGE": false,
-    "STAGE_METHOD": "median-history",
-    "STAGE_UPDATE": 0.02,
+    "COMMAND_METHOD": "median-history",
     "EPSILON": 50,
     "MAGNIFICATION": 0.0645,
     "ENABLE_LOGGING": false,
@@ -13,8 +11,7 @@
     "REPORT_AVERAGE": false,
     "VERBOSE": true,
     "BUFFER_SIZE": 5,
-    "HISTORY_SIZE": 12,
-    "MAX_SPEED": 1
+    "HISTORY_SIZE": 12
   },
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,
@@ -34,6 +31,7 @@
     "CAER_HOTPIXEL_LEARN": true
   },
   "STAGE_SETTINGS": {
+    "ENABLE_STAGE": false,
     "FOCAL_LENGTH": 0.006,
     "NUM_X": 640,
     "NUM_Y": 480,
@@ -45,6 +43,9 @@
     "START_PAN_ANGLE": -1.57079632679,
     "END_PAN_ANGLE": 1.57079632679,
     "START_TILT_ANGLE": 0,
-    "END_TILT_ANGLE": 2.094395102
+    "END_TILT_ANGLE": 2.094395102,
+    "STAGE_UPDATE": 0.02,
+    "UPDATE_TIME": 100,
+    "MAX_SPEED": 1
   }
 }

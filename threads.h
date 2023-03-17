@@ -289,7 +289,7 @@ int read_davis (Buffers& buffers, const json& noise_params, bool verbose, bool e
 
 void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, double dt, DBSCAN_KNN T, bool enable_tracking,
                        int Nx, int Ny, bool enable_event_log, const std::string& event_file,
-                       double mag, const std::string& position_method, double eps, bool report_average, double update, const bool& active,
+                       double mag, const std::string& position_method, double eps, bool report_average, double update, int update_time, const bool& active,
                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params) {
     auto const[nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle] = cal_params;
     auto start = std::chrono::high_resolution_clock::now();
@@ -318,7 +318,7 @@ void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, doub
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                   phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                                   phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
             }
             goto fill_processorB;
         }
@@ -334,12 +334,12 @@ void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, doub
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                    phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                                    phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
                 std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                    phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                                    phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
             }
             goto fill_processorC;
         }
@@ -350,14 +350,14 @@ void processing_threads(Buffers& buffers, Stage* kessler, double max_speed, doub
 
         if (!A_processed) {
             std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                                phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
         }
         if (!B_processed) {
             std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                                phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
         }
         std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultC, stageFile, eventFile, kessler, max_speed, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                            phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                            phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
     }
     stageFile.close();
     eventFile.close();

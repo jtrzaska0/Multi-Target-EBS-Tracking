@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
         PACKET_NUMBER: Number of event packets to aggregate.
         ENABLE_TRACKING: true or false
         ENABLE_STAGE: true or false
-        STAGE_METHOD: Stage command calculation method: "median", "dbscan", or "median-history"
+        COMMAND_METHOD: Stage command calculation method: "median", "dbscan", or "median-history"
         STAGE_UPDATE: Percent change required for stage to update positions
         EPSILON: epsilon for mlpack clustering
         MAGNIFICATION: Magnification
@@ -47,13 +47,14 @@ int main(int argc, char* argv[]) {
     std::string device_type = params.value("DEVICE_TYPE", "xplorer");
     double integrationtime = params.value("INTEGRATION_TIME_MS", 2);
     bool enable_tracking = params.value("ENABLE_TRACKING", false);
-    bool enable_stage = params.value("ENABLE_STAGE", false);
-    std::string position_method = params.value("STAGE_METHOD", "median-history");
+    bool enable_stage = stage_params.value("ENABLE_STAGE", false);
+    std::string position_method = params.value("COMMAND_METHOD", "median-history");
     double eps = params.value("EPSILON", 15);
     double mag = params.value("MAGNIFICATION", 0.05);
     bool enable_event_log = params.value("ENABLE_LOGGING", false);
     std::string event_file = params.value("EVENT_FILEPATH", "recording");
-    double stage_update = params.value("STAGE_UPDATE", 0.02);
+    double stage_update = stage_params.value("STAGE_UPDATE", 0.02);
+    int update_time = stage_params.value("UPDATE_TIME", 100);
     bool report_average = params.value("REPORT_AVERAGE", false);
     bool verbose = params.value("VERBOSE", false);
     const int buffer_size = params.value("BUFFER_SIZE", 100);
@@ -106,7 +107,7 @@ int main(int argc, char* argv[]) {
         kessler.handshake();
         std::cout << kessler.get_device_info().to_string();
         std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(&kessler, stage_params);
-        std::thread processor(processing_threads, std::ref(buffers), &kessler, max_speed, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, std::ref(active), cal_params);
+        std::thread processor(processing_threads, std::ref(buffers), &kessler, max_speed, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
         else
@@ -115,7 +116,7 @@ int main(int argc, char* argv[]) {
     }
     else {
         std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(nullptr, stage_params);
-        std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, std::ref(active), cal_params);
+        std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
         else
