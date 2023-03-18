@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
     int Ny = 480;
     if (device_type == "davis") {
         Nx = 346;
-        Ny = 240;
+        Ny = 260;
     }
 
     int ret;
