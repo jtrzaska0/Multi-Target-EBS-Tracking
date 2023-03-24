@@ -314,7 +314,7 @@ std::tuple<int, int, double, double, double, float, float, float, float, float, 
     return cal_params;
 }
 
-std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> move_stage (Stage* stage, double max_speed, const arma::mat& positions, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
+std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> move_stage (Stage* stage, double max_speed, double max_acc, const arma::mat& positions, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
                  float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double sep,
                  double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan, float prev_tilt, double update,
                  float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle, int update_time) {
@@ -345,9 +345,9 @@ std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, f
                 printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
 
                 stage->set_position_speed_acceleration(2, pan_position, (float) max_speed * PAN_MAX_SPEED,
-                                                         PAN_MAX_ACC);
+                                                       (float) max_acc * PAN_MAX_ACC);
                 stage->set_position_speed_acceleration(3, tilt_position, (float) max_speed * TILT_MAX_SPEED,
-                                                         TILT_MAX_ACC);
+                                                       (float) max_acc * TILT_MAX_ACC);
                 std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {
                         std::chrono::high_resolution_clock::now(), pan_position, tilt_position};
                 return ret;
@@ -365,7 +365,7 @@ std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, f
 
 std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int, float, float> read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>>& future,
                                                                         std::ofstream& stageFile, std::ofstream& eventFile,  Stage* stage,
-                                                                        double max_speed, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
+                                                                        double max_speed, double max_acc, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
                                                                         float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double sep,
                                                                         double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan, float prev_tilt, double update,
                                                                                                                  float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle, int update_time) {
@@ -374,7 +374,7 @@ std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int
     stageFile << positions_string;
     eventFile << event_string;
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
-    std::tie(end, prev_pan, prev_tilt) = move_stage(stage, max_speed, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
+    std::tie(end, prev_pan, prev_tilt) = move_stage(stage, max_speed, max_acc, positions, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
                           phi_prime_error, hfovx, hfovy, sep, r, last_start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
     std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int, float, float> ret = {end, prev_x, prev_y, n_samples, prev_pan, prev_tilt};
     return ret;

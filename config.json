@@ -46,6 +46,7 @@
     "END_TILT_ANGLE": 2.094395102,
     "STAGE_UPDATE": 0.02,
     "UPDATE_TIME": 100,
-    "MAX_SPEED": 1
+    "MAX_SPEED": 1,
+    "MAX_ACCELERATION": 1
   }
 }

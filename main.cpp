@@ -60,6 +60,7 @@ int main(int argc, char* argv[]) {
     const int buffer_size = params.value("BUFFER_SIZE", 100);
     const int history_size = params.value("HISTORY_SIZE", 12);
     double max_speed = params.value("MAX_SPEED", 0.6);
+    double max_acc = params.value("MAX_ACCELERATION", 1);
     bool enable_filter = noise_params.value("ENABLE_FILTER", false);
     Buffers buffers(buffer_size, history_size);
 
@@ -107,7 +108,7 @@ int main(int argc, char* argv[]) {
         stage.handshake();
         std::cout << stage.get_device_info().to_string();
         std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(&stage, stage_params);
-        std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
+        std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, max_acc, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
         else
@@ -116,7 +117,7 @@ int main(int argc, char* argv[]) {
     }
     else {
         std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(nullptr, stage_params);
-        std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
+        std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, max_acc, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
         else
