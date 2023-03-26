@@ -33,7 +33,7 @@ find_package(PkgConfig)
 pkg_check_modules (KSSP REQUIRED kssp)
 
 add_executable(LiveTracking main.cpp)
-target_link_libraries(LiveTracking PRIVATE caer ${nlohmann_json_LIBRARIES} ${Eigen3_LIBRARIES} ${Boost_LIBRARIES} ${fmt_LIBRARIES} ${OpenCV_LIBS} ${X11_LIBRARIES} ${KSSP_LIBRARIES})
+target_link_libraries(LiveTracking PUBLIC caer ${nlohmann_json_LIBRARIES} ${Eigen3_LIBRARIES} ${Boost_LIBRARIES} ${fmt_LIBRARIES} ${OpenCV_LIBS} ${X11_LIBRARIES} ${KSSP_LIBRARIES})
 target_include_directories(LiveTracking PUBLIC ${KSSP_INCLUDE_DIRS})
 message(STATUS ${KSSP_INCLUDE_DIRS})
 target_compile_options(LiveTracking PUBLIC ${KSSP_CFLAGS_OTHER})

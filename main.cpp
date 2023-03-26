@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
         Stage stage("192.168.50.1", 5520);
         stage.handshake();
         std::cout << stage.get_device_info().to_string();
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(&stage, stage_params);
+        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(&stage, stage_params, XK_C);
         std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, max_acc, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
         processor.join();
     }
     else {
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(nullptr, stage_params);
+        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(nullptr, stage_params, XK_C);
         std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, max_acc, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);

@@ -283,7 +283,7 @@ std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int> process_
     return ret;
 }
 
-std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> get_calibration(Stage* stage, const json& stage_params) {
+std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> get_calibration(Stage* stage, const json& stage_params, KeySym ks) {
     std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params;
     double focal_len = stage_params.value("FOCAL_LENGTH", 0.006);
     int nx = stage_params.value("NUM_X", 640);
@@ -304,7 +304,7 @@ std::tuple<int, int, double, double, double, float, float, float, float, float, 
         std::cout << stage->get_device_info().to_string();
         bool cal_active = true;
         std::thread pinger(ping, stage, std::ref(mtx), std::ref(cal_active));
-        auto const [hfovx, hfovy, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error] = calibrate_stage(stage, focal_len, sep, dist, px, nx, ny, correction, prev_cal, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+        auto const [hfovx, hfovy, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error] = calibrate_stage(stage, focal_len, sep, dist, px, nx, ny, correction, prev_cal, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, ks);
         printf("Enter approximate target distance in meters:\n");
         std::cin >> r;
         cal_active = false;
