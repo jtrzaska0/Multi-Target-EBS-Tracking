@@ -9,8 +9,6 @@
     "ENABLE_LOGGING": false,
     "EVENT_FILEPATH": "~/data/test",
     "REPORT_AVERAGE": false,
-    "VERBOSE": true,
-    "BUFFER_SIZE": 5,
     "HISTORY_SIZE": 12
   },
   "NOISE_FILTER": {

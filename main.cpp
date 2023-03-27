@@ -23,8 +23,6 @@ int main(int argc, char* argv[]) {
         MAGNIFICATION: Magnification
         ENABLE_LOGGING: true or false
         EVENT_FILEPATH: File for event CSV. Do not include the ".csv" extension
-        VERBOSE: Print queue sizes, true or false.
-        BUFFER_SIZE: Number of elements in circular buffer
         HISTORY_SIZE: Number of previous positions to average in history
         MAX_SPEED: Number between 0 and 1. Sets percent of max speed to move the stage
 
@@ -56,13 +54,11 @@ int main(int argc, char* argv[]) {
     double stage_update = stage_params.value("STAGE_UPDATE", 0.02);
     int update_time = stage_params.value("UPDATE_TIME", 100);
     bool report_average = params.value("REPORT_AVERAGE", false);
-    bool verbose = params.value("VERBOSE", false);
-    const int buffer_size = params.value("BUFFER_SIZE", 100);
     const int history_size = params.value("HISTORY_SIZE", 12);
     double max_speed = params.value("MAX_SPEED", 0.6);
     double max_acc = params.value("MAX_ACCELERATION", 1);
     bool enable_filter = noise_params.value("ENABLE_FILTER", false);
-    Buffers buffers(buffer_size, history_size);
+    Buffers buffers(history_size);
 
     /**Create an Algorithm object here.**/
     // Matrix initializer
@@ -110,18 +106,18 @@ int main(int argc, char* argv[]) {
         std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(&stage, stage_params, XK_C);
         std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, max_acc, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
-            ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
+            ret = read_xplorer(buffers, noise_params, enable_filter, active);
         else
-            ret = read_davis(buffers, noise_params, verbose, enable_filter, active);
+            ret = read_davis(buffers, noise_params, enable_filter, active);
         processor.join();
     }
     else {
         std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(nullptr, stage_params, XK_C);
         std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, max_acc, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
-            ret = read_xplorer(buffers, noise_params, verbose, enable_filter, active);
+            ret = read_xplorer(buffers, noise_params, enable_filter, active);
         else
-            ret = read_davis(buffers, noise_params, verbose, enable_filter, active);
+            ret = read_davis(buffers, noise_params, enable_filter, active);
         processor.join();
     }
 

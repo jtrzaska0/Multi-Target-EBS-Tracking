@@ -5,7 +5,7 @@
 #include <csignal>
 #include <queue>
 #include <semaphore>
-#include <boost/circular_buffer.hpp>
+#include <boost/lockfree/spsc_queue.hpp>
 #include <nlohmann/json.hpp>
 #include <libcaercpp/devices/dvxplorer.hpp>
 #include <libcaercpp/devices/davis.hpp>
@@ -24,10 +24,9 @@ static std::atomic_bool globalShutdown(false);
 
 class Buffers {
     public:
-        boost::circular_buffer<std::vector<double>> PacketQueue;
+        boost::lockfree::spsc_queue<std::vector<double>> PacketQueue{1024};
         arma::mat prev_positions;
-        Buffers(const int buffer_size, const int history_size){
-            PacketQueue.set_capacity(buffer_size);
+        explicit Buffers(const int history_size){
             prev_positions.set_size(2, history_size);
             prev_positions.fill(arma::fill::zeros);
         }
@@ -46,7 +45,7 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer (Buffers& buffers, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
+int read_xplorer (Buffers& buffers, const json& noise_params, bool enable_filter, bool& active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
 
@@ -107,11 +106,13 @@ int read_xplorer (Buffers& buffers, const json& noise_params, bool verbose, bool
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
     printf("Press space to stop...\n");
-    auto start = std::chrono::high_resolution_clock::now();
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
+        if (key_is_pressed(XK_space)) {
+            active = false;
+        }
         std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
-        if (packetContainer == nullptr || buffers.PacketQueue.full()) {
+        if (packetContainer == nullptr) {
             continue;
         }
         for (auto &packet: *packetContainer) {
@@ -139,16 +140,7 @@ int read_xplorer (Buffers& buffers, const json& noise_params, bool verbose, bool
                 }
             }
         }
-        buffers.PacketQueue.push_back(events);
-        if (key_is_pressed(XK_space)) {
-            active = false;
-        }
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> timestamp_ms = end - start;
-        if (timestamp_ms.count() > 2000 && verbose) {
-            start = std::chrono::high_resolution_clock::now();
-            printf("Packet Queue: %zu\n", buffers.PacketQueue.size());
-        }
+        buffers.PacketQueue.push(events);
     }
     handle.dataStop();
 
@@ -158,7 +150,7 @@ int read_xplorer (Buffers& buffers, const json& noise_params, bool verbose, bool
     return (EXIT_SUCCESS);
 }
 
-int read_davis (Buffers& buffers, const json& noise_params, bool verbose, bool enable_filter, bool& active) {
+int read_davis (Buffers& buffers, const json& noise_params, bool enable_filter, bool& active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
 
@@ -234,11 +226,10 @@ int read_davis (Buffers& buffers, const json& noise_params, bool verbose, bool e
     davisHandle.configSet(DAVIS_CONFIG_IMU, DAVIS_CONFIG_IMU_RUN_TEMPERATURE, false);
 
     printf("Press space to stop...\n");
-    auto start = std::chrono::high_resolution_clock::now();
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
-        if (packetContainer == nullptr || buffers.PacketQueue.full()) {
+        if (packetContainer == nullptr) {
             continue;
         }
 
@@ -267,15 +258,9 @@ int read_davis (Buffers& buffers, const json& noise_params, bool verbose, bool e
                 }
             }
         }
-        buffers.PacketQueue.push_back(events);
+        buffers.PacketQueue.push(events);
         if (key_is_pressed(XK_space)) {
             active = false;
-        }
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> timestamp_ms = end - start;
-        if (timestamp_ms.count() > 2000 && verbose) {
-            start = std::chrono::high_resolution_clock::now();
-            printf("Packet Queue: %zu\n", buffers.PacketQueue.size());
         }
     }
     davisHandle.dataStop();
@@ -308,7 +293,7 @@ void processing_threads(Buffers& buffers, Stage* stage, double max_speed, double
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
                            Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
-        buffers.PacketQueue.pop_front();
+        buffers.PacketQueue.pop();
 
         fill_processorB:
         if (!active)
@@ -324,7 +309,7 @@ void processing_threads(Buffers& buffers, Stage* stage, double max_speed, double
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
                            Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
-        buffers.PacketQueue.pop_front();
+        buffers.PacketQueue.pop();
 
         fill_processorC:
         if (!active)
@@ -345,7 +330,7 @@ void processing_threads(Buffers& buffers, Stage* stage, double max_speed, double
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
                            Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
-        buffers.PacketQueue.pop_front();
+        buffers.PacketQueue.pop();
 
         if (!A_processed) {
             std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, stage, max_speed, max_acc, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
