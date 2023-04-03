@@ -25,12 +25,12 @@ include_directories(${nlohmann_json_INCLUDE_DIR})
 link_directories(${nlohmann_json_LIBRARIES})
 
 FIND_PACKAGE(OpenCV REQUIRED COMPONENTS core imgproc highgui)
-IF(OpenCV_VERSION VERSION_LESS "3.1.0")
+IF (OpenCV_VERSION VERSION_LESS "3.1.0")
     MESSAGE(FATAL_ERROR "Cannot find OpenCV 3.1.0 or newer.")
-ENDIF()
+ENDIF ()
 
 find_package(PkgConfig)
-pkg_check_modules (KSSP REQUIRED kssp)
+pkg_check_modules(KSSP REQUIRED kssp)
 
 add_executable(LiveTracking main.cpp)
 target_link_libraries(LiveTracking PUBLIC caer ${nlohmann_json_LIBRARIES} ${Eigen3_LIBRARIES} ${Boost_LIBRARIES} ${fmt_LIBRARIES} ${OpenCV_LIBS} ${X11_LIBRARIES} ${KSSP_LIBRARIES})

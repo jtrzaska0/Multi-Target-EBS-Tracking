@@ -23,13 +23,14 @@ using json = nlohmann::json;
 static std::atomic_bool globalShutdown(false);
 
 class Buffers {
-    public:
-        boost::lockfree::spsc_queue<std::vector<double>> PacketQueue{1024};
-        arma::mat prev_positions;
-        explicit Buffers(const int history_size){
-            prev_positions.set_size(2, history_size);
-            prev_positions.fill(arma::fill::zeros);
-        }
+public:
+    boost::lockfree::spsc_queue<std::vector<double>> PacketQueue{1024};
+    arma::mat prev_positions;
+
+    explicit Buffers(const int history_size) {
+        prev_positions.set_size(2, history_size);
+        prev_positions.fill(arma::fill::zeros);
+    }
 };
 
 static void globalShutdownSignalHandler(int signal) {
@@ -45,12 +46,12 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer (Buffers& buffers, const json& noise_params, bool enable_filter, bool& active) {
+int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
-    shutdownAction.sa_flags   = 0;
+    shutdownAction.sa_flags = 0;
     sigemptyset(&shutdownAction.sa_mask);
     sigaddset(&shutdownAction.sa_mask, SIGTERM);
     sigaddset(&shutdownAction.sa_mask, SIGINT);
@@ -82,17 +83,26 @@ int read_xplorer (Buffers& buffers, const json& noise_params, bool enable_filter
     handle.sendDefaultConfig();
 
     // Add full-sized software filter to reduce DVS noise.
-    libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(xplorer_info.dvsSizeX, xplorer_info.dvsSizeY);
+    libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(xplorer_info.dvsSizeX,
+                                                                           xplorer_info.dvsSizeY);
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, noise_params.value("CAER_BACKGROUND_ACTIVITY_TWO_LEVELS", true));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, noise_params.value("CAER_BACKGROUND_ACTIVITY_CHECK_POLARITY", true));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MIN", 2));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MAX", 8));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, noise_params.value("CAER_BACKGROUND_ACTIVITY_TIME", 2000));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, noise_params.value("CAER_BACKGROUND_ACTIVITY_ENABLE", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_TWO_LEVELS", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_CHECK_POLARITY", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MIN", 2));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MAX", 8));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_TIME", 2000));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_ENABLE", true));
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, noise_params.value("CAER_REFRACTORY_PERIOD_TIME", 200));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, noise_params.value("CAER_REFRACTORY_PERIOD_ENABLE", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME,
+                             noise_params.value("CAER_REFRACTORY_PERIOD_TIME", 200));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE,
+                             noise_params.value("CAER_REFRACTORY_PERIOD_ENABLE", true));
 
     dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, noise_params.value("CAER_HOTPIXEL_ENABLE", true));
     dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, noise_params.value("CAER_HOTPIXEL_LEARN", true));
@@ -124,7 +134,7 @@ int read_xplorer (Buffers& buffers, const json& noise_params, bool enable_filter
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
-                if(enable_filter)
+                if (enable_filter)
                     dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
@@ -150,12 +160,12 @@ int read_xplorer (Buffers& buffers, const json& noise_params, bool enable_filter
     return (EXIT_SUCCESS);
 }
 
-int read_davis (Buffers& buffers, const json& noise_params, bool enable_filter, bool& active) {
+int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
-    shutdownAction.sa_flags   = 0;
+    shutdownAction.sa_flags = 0;
     sigemptyset(&shutdownAction.sa_mask);
     sigaddset(&shutdownAction.sa_mask, SIGTERM);
     sigaddset(&shutdownAction.sa_mask, SIGINT);
@@ -188,25 +198,37 @@ int read_davis (Buffers& buffers, const json& noise_params, bool enable_filter, 
 
     // Enable hardware filters if present.
     if (davis_info.dvsHasBackgroundActivityFilter && enable_filter) {
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME, noise_params.value("DAVIS_BACKGROUND_ACTIVITY_TIME", 8));
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY, noise_params.value("DAVIS_BACKGROUND_ACTIVITY", true));
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY_TIME,
+                              noise_params.value("DAVIS_BACKGROUND_ACTIVITY_TIME", 8));
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_BACKGROUND_ACTIVITY,
+                              noise_params.value("DAVIS_BACKGROUND_ACTIVITY", true));
 
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD_TIME, noise_params.value("DAVIS_REFRACTORY_PERIOD_TIME", 1));
-        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD, noise_params.value("DAVIS_REFRACTORY_PERIOD", true));
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD_TIME,
+                              noise_params.value("DAVIS_REFRACTORY_PERIOD_TIME", 1));
+        davisHandle.configSet(DAVIS_CONFIG_DVS, DAVIS_CONFIG_DVS_FILTER_REFRACTORY_PERIOD,
+                              noise_params.value("DAVIS_REFRACTORY_PERIOD", true));
     }
 
     // Add full-sized software filter to reduce DVS noise.
     libcaer::filters::DVSNoise dvsNoiseFilter = libcaer::filters::DVSNoise(davis_info.dvsSizeX, davis_info.dvsSizeY);
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS, noise_params.value("CAER_BACKGROUND_ACTIVITY_TWO_LEVELS", true));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY, noise_params.value("CAER_BACKGROUND_ACTIVITY_CHECK_POLARITY", true));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN, noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MIN", 2));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX, noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MAX", 8));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME, noise_params.value("CAER_BACKGROUND_ACTIVITY_TIME", 2000));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE, noise_params.value("CAER_BACKGROUND_ACTIVITY_ENABLE", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TWO_LEVELS,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_TWO_LEVELS", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_CHECK_POLARITY,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_CHECK_POLARITY", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MIN,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MIN", 2));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_SUPPORT_MAX,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_SUPPORT_MAX", 8));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_TIME,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_TIME", 2000));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_BACKGROUND_ACTIVITY_ENABLE,
+                             noise_params.value("CAER_BACKGROUND_ACTIVITY_ENABLE", true));
 
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME, noise_params.value("CAER_REFRACTORY_PERIOD_TIME", 200));
-    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE, noise_params.value("CAER_REFRACTORY_PERIOD_ENABLE", true));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_TIME,
+                             noise_params.value("CAER_REFRACTORY_PERIOD_TIME", 200));
+    dvsNoiseFilter.configSet(CAER_FILTER_DVS_REFRACTORY_PERIOD_ENABLE,
+                             noise_params.value("CAER_REFRACTORY_PERIOD_ENABLE", true));
 
     dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, noise_params.value("CAER_HOTPIXEL_ENABLE", true));
     dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, noise_params.value("CAER_HOTPIXEL_LEARN", true));
@@ -271,11 +293,13 @@ int read_davis (Buffers& buffers, const json& noise_params, bool enable_filter, 
     return (EXIT_SUCCESS);
 }
 
-void processing_threads(Buffers& buffers, Stage* stage, double max_speed, double max_acc, double dt, DBSCAN_KNN T, bool enable_tracking,
-                       int Nx, int Ny, bool enable_event_log, const std::string& event_file,
-                       double mag, const std::string& position_method, double eps, bool report_average, double update, int update_time, const bool& active,
-                       std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params) {
-    auto const[nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle] = cal_params;
+void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double max_acc, double dt, DBSCAN_KNN T,
+                        bool enable_tracking,
+                        int Nx, int Ny, bool enable_event_log, const std::string &event_file,
+                        double mag, const std::string &position_method, double eps, bool report_average, double update,
+                        int update_time, const bool &active,
+                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params) {
+    auto const [nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle] = cal_params;
     auto start = std::chrono::high_resolution_clock::now();
     std::ofstream stageFile(event_file + "-stage.csv");
     std::ofstream eventFile(event_file + "-events.csv");
@@ -292,7 +316,8 @@ void processing_threads(Buffers& buffers, Stage* stage, double max_speed, double
             continue;
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions,
+                           prev_x, prev_y, n_samples, report_average);
         buffers.PacketQueue.pop();
 
         fill_processorB:
@@ -301,14 +326,27 @@ void processing_threads(Buffers& buffers, Stage* stage, double max_speed, double
         if (buffers.PacketQueue.empty()) {
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
-                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, stage, max_speed, max_acc, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                   phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
+                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
+                                                                                              eventFile, stage,
+                                                                                              max_speed, max_acc, nx,
+                                                                                              ny, begin_pan, end_pan,
+                                                                                              begin_tilt, end_tilt,
+                                                                                              theta_prime_error,
+                                                                                              phi_prime_error, hfovx,
+                                                                                              hfovy, y0, r, start,
+                                                                                              prev_pan, prev_tilt,
+                                                                                              update, begin_pan_angle,
+                                                                                              end_pan_angle,
+                                                                                              begin_tilt_angle,
+                                                                                              end_tilt_angle,
+                                                                                              update_time);
             }
             goto fill_processorB;
         }
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions,
+                           prev_x, prev_y, n_samples, report_average);
         buffers.PacketQueue.pop();
 
         fill_processorC:
@@ -317,31 +355,83 @@ void processing_threads(Buffers& buffers, Stage* stage, double max_speed, double
         if (buffers.PacketQueue.empty()) {
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
-                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, stage, max_speed, max_acc, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                    phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
+                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
+                                                                                              eventFile, stage,
+                                                                                              max_speed, max_acc, nx,
+                                                                                              ny, begin_pan, end_pan,
+                                                                                              begin_tilt, end_tilt,
+                                                                                              theta_prime_error,
+                                                                                              phi_prime_error, hfovx,
+                                                                                              hfovy, y0, r, start,
+                                                                                              prev_pan, prev_tilt,
+                                                                                              update, begin_pan_angle,
+                                                                                              end_pan_angle,
+                                                                                              begin_tilt_angle,
+                                                                                              end_tilt_angle,
+                                                                                              update_time);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
-                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile, eventFile, stage, max_speed, max_acc, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                    phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
+                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile,
+                                                                                              eventFile, stage,
+                                                                                              max_speed, max_acc, nx,
+                                                                                              ny, begin_pan, end_pan,
+                                                                                              begin_tilt, end_tilt,
+                                                                                              theta_prime_error,
+                                                                                              phi_prime_error, hfovx,
+                                                                                              hfovy, y0, r, start,
+                                                                                              prev_pan, prev_tilt,
+                                                                                              update, begin_pan_angle,
+                                                                                              end_pan_angle,
+                                                                                              begin_tilt_angle,
+                                                                                              end_tilt_angle,
+                                                                                              update_time);
             }
             goto fill_processorC;
         }
         std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions, prev_x, prev_y, n_samples, report_average);
+                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions,
+                           prev_x, prev_y, n_samples, report_average);
         buffers.PacketQueue.pop();
 
         if (!A_processed) {
-            std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile, eventFile, stage, max_speed, max_acc, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
+            std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
+                                                                                          eventFile, stage, max_speed,
+                                                                                          max_acc, nx, ny, begin_pan,
+                                                                                          end_pan, begin_tilt, end_tilt,
+                                                                                          theta_prime_error,
+                                                                                          phi_prime_error, hfovx, hfovy,
+                                                                                          y0, r, start, prev_pan,
+                                                                                          prev_tilt, update,
+                                                                                          begin_pan_angle,
+                                                                                          end_pan_angle,
+                                                                                          begin_tilt_angle,
+                                                                                          end_tilt_angle, update_time);
         }
         if (!B_processed) {
-            std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile, eventFile, stage, max_speed, max_acc, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                                phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
+            std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile,
+                                                                                          eventFile, stage, max_speed,
+                                                                                          max_acc, nx, ny, begin_pan,
+                                                                                          end_pan, begin_tilt, end_tilt,
+                                                                                          theta_prime_error,
+                                                                                          phi_prime_error, hfovx, hfovy,
+                                                                                          y0, r, start, prev_pan,
+                                                                                          prev_tilt, update,
+                                                                                          begin_pan_angle,
+                                                                                          end_pan_angle,
+                                                                                          begin_tilt_angle,
+                                                                                          end_tilt_angle, update_time);
         }
-        std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultC, stageFile, eventFile, stage, max_speed, max_acc, nx, ny, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                            phi_prime_error, hfovx, hfovy, y0, r, start, prev_pan, prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, update_time);
+        std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultC, stageFile, eventFile,
+                                                                                      stage, max_speed, max_acc, nx, ny,
+                                                                                      begin_pan, end_pan, begin_tilt,
+                                                                                      end_tilt, theta_prime_error,
+                                                                                      phi_prime_error, hfovx, hfovy, y0,
+                                                                                      r, start, prev_pan, prev_tilt,
+                                                                                      update, begin_pan_angle,
+                                                                                      end_pan_angle, begin_tilt_angle,
+                                                                                      end_tilt_angle, update_time);
     }
     stageFile.close();
     eventFile.close();

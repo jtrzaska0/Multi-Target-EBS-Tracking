@@ -5,7 +5,7 @@
 
 using json = nlohmann::json;
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     /*
 
     Args:
@@ -63,26 +63,37 @@ int main(int argc, char* argv[]) {
     /**Create an Algorithm object here.**/
     // Matrix initializer
     // DBSCAN
-    Eigen::MatrixXd invals {Eigen::MatrixXd::Zero(1, 4)};
+    Eigen::MatrixXd invals{Eigen::MatrixXd::Zero(1, 4)};
 
     // Mean Shift
-    invals(0,0) = 5.2;
-    invals(0,1) = 9;
-    invals(0,2) = 74;
-    invals(0,3) = 1.2;
+    invals(0, 0) = 5.2;
+    invals(0, 1) = 9;
+    invals(0, 2) = 74;
+    invals(0, 3) = 1.2;
     // Model initializer
     double DT = integrationtime;
     double p3 = pow(DT, 3) / 3;
     double p2 = pow(DT, 2) / 2;
 
-    Eigen::MatrixXd P {{16, 0, 0, 0}, {0, 16, 0, 0}, {0, 0, 9, 0}, {0, 0, 0, 9}};
-    Eigen::MatrixXd F {{1, 0, DT, 0}, {0, 1, 0, DT}, {0, 0, 1, 0}, {0, 0, 0, 1}};
-    Eigen::MatrixXd Q {{p3, 0, p2, 0}, {0, p3, 0, p2}, {p2, 0, DT, 0}, {0, p2, 0, DT}};
-    Eigen::MatrixXd H {{1, 0, 0, 0}, {0, 1, 0, 0}};
-    Eigen::MatrixXd R {{7, 0}, {0, 7}};
+    Eigen::MatrixXd P{{16, 0,  0, 0},
+                      {0,  16, 0, 0},
+                      {0,  0,  9, 0},
+                      {0,  0,  0, 9}};
+    Eigen::MatrixXd F{{1, 0, DT, 0},
+                      {0, 1, 0,  DT},
+                      {0, 0, 1,  0},
+                      {0, 0, 0,  1}};
+    Eigen::MatrixXd Q{{p3, 0,  p2, 0},
+                      {0,  p3, 0,  p2},
+                      {p2, 0,  DT, 0},
+                      {0,  p2, 0,  DT}};
+    Eigen::MatrixXd H{{1, 0, 0, 0},
+                      {0, 1, 0, 0}};
+    Eigen::MatrixXd R{{7, 0},
+                      {0, 7}};
 
     // Define the model.
-    KModel k_model {.dt = DT, .P = P, .F = F, .Q = Q, .H = H, .R = R};
+    KModel k_model{.dt = DT, .P = P, .F = F, .Q = Q, .H = H, .R = R};
     // Algo initializer
     DBSCAN_KNN algo(invals, k_model);
 
@@ -97,23 +108,29 @@ int main(int argc, char* argv[]) {
     bool active = true;
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS",
-                    cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
+                    cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
+                    cv::WindowFlags::WINDOW_GUI_EXPANDED);
 
     if (enable_stage) {
         Stage stage("192.168.50.1", 5520);
         stage.handshake();
         std::cout << stage.get_device_info().to_string();
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(&stage, stage_params, XK_C);
-        std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, max_acc, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
+        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(
+                &stage, stage_params, XK_C);
+        std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, max_acc, DT, algo,
+                              enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
+                              report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, enable_filter, active);
         else
             ret = read_davis(buffers, noise_params, enable_filter, active);
         processor.join();
-    }
-    else {
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(nullptr, stage_params, XK_C);
-        std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, max_acc, DT, algo, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps, report_average, stage_update, update_time, std::ref(active), cal_params);
+    } else {
+        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(
+                nullptr, stage_params, XK_C);
+        std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, max_acc, DT, algo,
+                              enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
+                              report_average, stage_update, update_time, std::ref(active), cal_params);
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, enable_filter, active);
         else
