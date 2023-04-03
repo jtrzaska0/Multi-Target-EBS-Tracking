@@ -298,7 +298,8 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
                         int Nx, int Ny, bool enable_event_log, const std::string &event_file,
                         double mag, const std::string &position_method, double eps, bool report_average, double update,
                         int update_time, const bool &active,
-                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params) {
+                        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params,
+                        bool save_video, cv::VideoWriter &video) {
     auto const [nx, ny, hfovx, hfovy, y0, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error, r, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle] = cal_params;
     auto start = std::chrono::high_resolution_clock::now();
     std::ofstream stageFile(event_file + "-stage.csv");
@@ -339,7 +340,8 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
                                                                                               end_pan_angle,
                                                                                               begin_tilt_angle,
                                                                                               end_tilt_angle,
-                                                                                              update_time);
+                                                                                              update_time, save_video,
+                                                                                              video);
             }
             goto fill_processorB;
         }
@@ -368,7 +370,8 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
                                                                                               end_pan_angle,
                                                                                               begin_tilt_angle,
                                                                                               end_tilt_angle,
-                                                                                              update_time);
+                                                                                              update_time, save_video,
+                                                                                              video);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
@@ -385,7 +388,8 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
                                                                                               end_pan_angle,
                                                                                               begin_tilt_angle,
                                                                                               end_tilt_angle,
-                                                                                              update_time);
+                                                                                              update_time, save_video,
+                                                                                              video);
             }
             goto fill_processorC;
         }
@@ -407,7 +411,8 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
                                                                                           begin_pan_angle,
                                                                                           end_pan_angle,
                                                                                           begin_tilt_angle,
-                                                                                          end_tilt_angle, update_time);
+                                                                                          end_tilt_angle, update_time,
+                                                                                          save_video, video);
         }
         if (!B_processed) {
             std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultB, stageFile,
@@ -421,7 +426,8 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
                                                                                           begin_pan_angle,
                                                                                           end_pan_angle,
                                                                                           begin_tilt_angle,
-                                                                                          end_tilt_angle, update_time);
+                                                                                          end_tilt_angle, update_time,
+                                                                                          save_video, video);
         }
         std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultC, stageFile, eventFile,
                                                                                       stage, max_speed, max_acc, nx, ny,
@@ -431,8 +437,10 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
                                                                                       r, start, prev_pan, prev_tilt,
                                                                                       update, begin_pan_angle,
                                                                                       end_pan_angle, begin_tilt_angle,
-                                                                                      end_tilt_angle, update_time);
+                                                                                      end_tilt_angle, update_time,
+                                                                                      save_video, video);
     }
     stageFile.close();
     eventFile.close();
+    video.release();
 }

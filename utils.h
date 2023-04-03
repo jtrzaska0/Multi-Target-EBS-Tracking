@@ -397,11 +397,14 @@ read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string,
             float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double sep,
             double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan,
             float prev_tilt, double update,
-            float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle, int update_time) {
+            float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle, int update_time,
+            bool save_video, cv::VideoWriter &video) {
     const auto [image, positions, event_string, positions_string, prev_x, prev_y, n_samples] = future.get();
     update_window("PLOT_EVENTS", image);
     stageFile << positions_string;
     eventFile << event_string;
+    if (save_video)
+        video.write(image);
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
     std::tie(end, prev_pan, prev_tilt) = move_stage(stage, max_speed, max_acc, positions, nx, ny, begin_pan, end_pan,
                                                     begin_tilt, end_tilt, theta_prime_error,

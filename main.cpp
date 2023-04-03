@@ -25,6 +25,9 @@ int main(int argc, char *argv[]) {
         EVENT_FILEPATH: File for event CSV. Do not include the ".csv" extension
         HISTORY_SIZE: Number of previous positions to average in history
         MAX_SPEED: Number between 0 and 1. Sets percent of max speed to move the stage
+        SAVE_VIDEO: true or false
+        VIDEO_FILEPATH: File for video. Include the ".mp4" extension
+        VIDEO_FPS: Target video frames per second
 
     Ret:
         0
@@ -58,6 +61,9 @@ int main(int argc, char *argv[]) {
     double max_speed = params.value("MAX_SPEED", 0.6);
     double max_acc = params.value("MAX_ACCELERATION", 1);
     bool enable_filter = noise_params.value("ENABLE_FILTER", false);
+    bool save_video = params.value("SAVE_VIDEO", false);
+    std::string video_file = params.value("VIDEO_FILEPATH", "output.mp4");
+    int video_fps = params.value("VIDEO_FPS", 30);
     Buffers buffers(history_size);
 
     /**Create an Algorithm object here.**/
@@ -110,6 +116,7 @@ int main(int argc, char *argv[]) {
     cv::namedWindow("PLOT_EVENTS",
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                     cv::WindowFlags::WINDOW_GUI_EXPANDED);
+    cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
 
     if (enable_stage) {
         Stage stage("192.168.50.1", 5520);
@@ -119,7 +126,8 @@ int main(int argc, char *argv[]) {
                 &stage, stage_params, XK_C);
         std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, max_acc, DT, algo,
                               enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                              report_average, stage_update, update_time, std::ref(active), cal_params);
+                              report_average, stage_update, update_time, std::ref(active), cal_params, save_video,
+                              std::ref(video));
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, enable_filter, active);
         else
@@ -130,7 +138,8 @@ int main(int argc, char *argv[]) {
                 nullptr, stage_params, XK_C);
         std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, max_acc, DT, algo,
                               enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                              report_average, stage_update, update_time, std::ref(active), cal_params);
+                              report_average, stage_update, update_time, std::ref(active), cal_params, save_video,
+                              std::ref(video));
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, enable_filter, active);
         else

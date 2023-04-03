@@ -7,7 +7,10 @@
     "EPSILON": 50,
     "MAGNIFICATION": 0.0645,
     "ENABLE_LOGGING": false,
-    "EVENT_FILEPATH": "~/data/test",
+    "EVENT_FILEPATH": "data",
+    "SAVE_VIDEO": false,
+    "VIDEO_FILEPATH": "output.mp4",
+    "VIDEO_FPS": 30,
     "REPORT_AVERAGE": false,
     "HISTORY_SIZE": 12
   },
