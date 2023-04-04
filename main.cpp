@@ -64,6 +64,16 @@ int main(int argc, char *argv[]) {
     bool save_video = params.value("SAVE_VIDEO", false);
     std::string video_file = params.value("VIDEO_FILEPATH", "output.mp4");
     int video_fps = params.value("VIDEO_FPS", 30);
+    double focal_len = stage_params.value("FOCAL_LENGTH", 0.006);
+    double sep = stage_params.value("SEPARATION", 0.15);
+    double dist = stage_params.value("DISTANCE", 10);
+    double px_size = stage_params.value("PIXEL_SIZE", 0.000009);
+    bool correction = stage_params.value("SYSTEMATIC_ERROR", false);
+    bool prev_cal = stage_params.value("USE_PREVIOUS", false);
+    float begin_pan_angle = (float) stage_params.value("START_PAN_ANGLE", -M_PI_2);
+    float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
+    float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", 0);
+    float end_tilt_angle = (float) stage_params.value("END_TILT_ANGLE", 2 * M_PI / 3);
     Buffers buffers(history_size);
 
     /**Create an Algorithm object here.**/
@@ -111,7 +121,10 @@ int main(int argc, char *argv[]) {
     }
 
     int ret;
+    Calibration cal_params;
+    float cal_dist;
     bool active = true;
+    CalibrationInit cal_init(focal_len, sep, dist, px_size, Nx, Ny, correction, prev_cal, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, XK_C);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS",
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
@@ -122,11 +135,10 @@ int main(int argc, char *argv[]) {
         Stage stage("192.168.50.1", 5520);
         stage.handshake();
         std::cout << stage.get_device_info().to_string();
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(
-                &stage, stage_params, XK_C);
+        std::tie(cal_params, cal_dist) = get_calibration(&stage, cal_init);
         std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, max_acc, DT, algo,
                               enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                              report_average, stage_update, update_time, std::ref(active), cal_params, save_video,
+                              report_average, stage_update, update_time, std::ref(active), cal_params, cal_dist, cal_init, save_video,
                               std::ref(video));
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, enable_filter, active);
@@ -134,11 +146,10 @@ int main(int argc, char *argv[]) {
             ret = read_davis(buffers, noise_params, enable_filter, active);
         processor.join();
     } else {
-        std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params = get_calibration(
-                nullptr, stage_params, XK_C);
+        std::tie(cal_params, cal_dist) = get_calibration(nullptr, cal_init);
         std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, max_acc, DT, algo,
                               enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                              report_average, stage_update, update_time, std::ref(active), cal_params, save_video,
+                              report_average, stage_update, update_time, std::ref(active), cal_params, cal_dist, cal_init, save_video,
                               std::ref(video));
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, enable_filter, active);

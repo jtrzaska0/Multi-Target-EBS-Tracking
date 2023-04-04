@@ -301,21 +301,8 @@ process_packet(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_
     return ret;
 }
 
-std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float>
-get_calibration(Stage *stage, const json &stage_params, KeySym ks) {
-    std::tuple<int, int, double, double, double, float, float, float, float, float, float, double, float, float, float, float> cal_params;
-    double focal_len = stage_params.value("FOCAL_LENGTH", 0.006);
-    int nx = stage_params.value("NUM_X", 640);
-    int ny = stage_params.value("NUM_Y", 480);
-    double sep = stage_params.value("SEPARATION", 0.15);
-    double dist = stage_params.value("DISTANCE", 10);
-    double px = stage_params.value("PIXEL_SIZE", 0.000009);
-    bool correction = stage_params.value("SYSTEMATIC_ERROR", false);
-    bool prev_cal = stage_params.value("USE_PREVIOUS", false);
-    float begin_pan_angle = (float) stage_params.value("START_PAN_ANGLE", -M_PI_2);
-    float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
-    float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", 0);
-    float end_tilt_angle = (float) stage_params.value("END_TILT_ANGLE", 2 * M_PI / 3);
+std::tuple<Calibration, float> get_calibration(Stage *stage, CalibrationInit calInit) {
+    std::tuple<Calibration, float> ret;
     if (stage) {
         std::mutex mtx;
         double r;
@@ -323,26 +310,21 @@ get_calibration(Stage *stage, const json &stage_params, KeySym ks) {
         std::cout << stage->get_device_info().to_string();
         bool cal_active = true;
         std::thread pinger(ping, stage, std::ref(mtx), std::ref(cal_active));
-        auto const [hfovx, hfovy, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error, phi_prime_error] = calibrate_stage(
-                stage, focal_len, sep, dist, px, nx, ny, correction, prev_cal, begin_pan_angle, end_pan_angle,
-                begin_tilt_angle, end_tilt_angle, ks);
+        Calibration cal_params = calibrate_stage(stage, calInit);
         printf("Enter approximate target distance in meters:\n");
         std::cin >> r;
         cal_active = false;
         pinger.join();
-        cal_params = {nx, ny, hfovx, hfovy, sep, begin_pan, end_pan, begin_tilt, end_tilt, theta_prime_error,
-                      phi_prime_error, r, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle};
+        ret = {cal_params, r};
     }
-    return cal_params;
+    return ret;
 }
 
 std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float>
-move_stage(Stage *stage, double max_speed, double max_acc, const arma::mat &positions, int nx, int ny, float begin_pan,
-           float end_pan, float begin_tilt,
-           float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double sep,
-           double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan,
+move_stage(Stage *stage, double max_speed, double max_acc, const arma::mat &positions, int nx, int ny, Calibration cal_params,
+           double obj_dist, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan,
            float prev_tilt, double update,
-           float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle, int update_time) {
+           CalibrationInit cal_init, int update_time) {
     if (stage) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> timestamp_ms = end - last_start;
@@ -351,13 +333,13 @@ move_stage(Stage *stage, double max_speed, double max_acc, const arma::mat &posi
             double x = positions(0, 0) - ((double) nx / 2);
             double y = ((double) ny / 2) - positions(1, 0);
 
-            double theta = get_theta(y, ny, hfovy);
-            double phi = get_phi(x, nx, hfovx);
-            double theta_prime = get_theta_prime(phi, theta, sep, r, theta_prime_error);
-            double phi_prime = get_phi_prime(phi, theta, sep, r, phi_prime_error);
+            double theta = get_theta(y, ny, cal_params.hfovy);
+            double phi = get_phi(x, nx, cal_params.hfovx);
+            double theta_prime = get_theta_prime(phi, theta, cal_init.sep, obj_dist, cal_params.theta_prime_error);
+            double phi_prime = get_phi_prime(phi, theta, cal_init.sep, obj_dist, cal_params.phi_prime_error);
 
-            float pan_position = get_motor_position(begin_pan, end_pan, begin_pan_angle, end_pan_angle, phi_prime);
-            float tilt_position = get_motor_position(begin_tilt, end_tilt, begin_tilt_angle, end_tilt_angle,
+            float pan_position = get_motor_position(cal_params.begin_pan, cal_params.end_pan, cal_init.begin_pan_angle, cal_init.end_pan_angle, phi_prime);
+            float tilt_position = get_motor_position(cal_params.begin_tilt, cal_params.end_tilt, cal_init.begin_tilt_angle, cal_init.end_tilt_angle,
                                                      theta_prime);
 
 
@@ -366,7 +348,7 @@ move_stage(Stage *stage, double max_speed, double max_acc, const arma::mat &posi
                 printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI,
                        phi_prime * 180 / M_PI);
                 printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
-                       pan_position, end_pan - begin_pan, tilt_position, end_tilt - begin_tilt);
+                       pan_position, cal_params.end_pan - cal_params.begin_pan, tilt_position, cal_params.end_tilt - cal_params.begin_tilt);
                 printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
 
                 stage->set_position_speed_acceleration(2, pan_position, (float) max_speed * PAN_MAX_SPEED,
@@ -393,11 +375,9 @@ move_stage(Stage *stage, double max_speed, double max_acc, const arma::mat &posi
 std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int, float, float>
 read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> &future,
             std::ofstream &stageFile, std::ofstream &eventFile, Stage *stage,
-            double max_speed, double max_acc, int nx, int ny, float begin_pan, float end_pan, float begin_tilt,
-            float end_tilt, float theta_prime_error, float phi_prime_error, double hfovx, double hfovy, double sep,
-            double r, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan,
+            double max_speed, double max_acc, int nx, int ny, Calibration cal_params, float cal_dist, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan,
             float prev_tilt, double update,
-            float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle, int update_time,
+            CalibrationInit cal_init, int update_time,
             bool save_video, cv::VideoWriter &video) {
     const auto [image, positions, event_string, positions_string, prev_x, prev_y, n_samples] = future.get();
     update_window("PLOT_EVENTS", image);
@@ -406,11 +386,8 @@ read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string,
     if (save_video)
         video.write(image);
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
-    std::tie(end, prev_pan, prev_tilt) = move_stage(stage, max_speed, max_acc, positions, nx, ny, begin_pan, end_pan,
-                                                    begin_tilt, end_tilt, theta_prime_error,
-                                                    phi_prime_error, hfovx, hfovy, sep, r, last_start, prev_pan,
-                                                    prev_tilt, update, begin_pan_angle, end_pan_angle, begin_tilt_angle,
-                                                    end_tilt_angle, update_time);
+    std::tie(end, prev_pan, prev_tilt) = move_stage(stage, max_speed, max_acc, positions, nx, ny, cal_params, cal_dist, last_start, prev_pan,
+                                                    prev_tilt, update, cal_init, update_time);
     std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int, float, float> ret = {end,
                                                                                                                 prev_x,
                                                                                                                 prev_y,
