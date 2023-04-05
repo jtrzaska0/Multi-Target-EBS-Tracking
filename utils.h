@@ -28,9 +28,12 @@ public:
     CalibrationInit cal_init;
     bool save_video;
 
-    ProcessingInit(double max_speed, double max_acc, double dt, bool enable_tracking, int Nx, int Ny,
+    ProcessingInit(const Calibration &cal_params, const CalibrationInit &cal_init, double max_speed, double max_acc,
+                   double dt, bool enable_tracking, int Nx, int Ny,
                    bool enable_event_log, const std::string &event_file, double mag, const std::string &position_method,
                    double eps, bool report_average, double update, int update_time, float cal_dist, bool save_video) {
+        this->cal_params = cal_params;
+        this->cal_init = cal_init;
         this->max_speed = max_speed;
         this->max_acc = max_acc;
         this->dt = dt;

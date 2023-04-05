@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
     bool active = true;
     CalibrationInit cal_init(focal_len, sep, dist, px_size, Nx, Ny, correction, prev_cal, begin_pan_angle,
                              end_pan_angle, begin_tilt_angle, end_tilt_angle, XK_C);
-    ProcessingInit proc_init(max_speed, max_acc, DT, enable_tracking, Nx, Ny,
+    ProcessingInit proc_init(cal_params, cal_init, max_speed, max_acc, DT, enable_tracking, Nx, Ny,
                              enable_event_log, event_file, mag, position_method,
                              eps, report_average, stage_update, update_time, cal_dist, save_video);
     cv::startWindowThread();
@@ -140,6 +140,8 @@ int main(int argc, char *argv[]) {
         stage.handshake();
         std::cout << stage.get_device_info().to_string();
         std::tie(cal_params, cal_dist) = get_calibration(&stage, cal_init);
+        proc_init.cal_params = cal_params;
+        proc_init.cal_dist = cal_dist;
         std::thread processor(processing_threads, std::ref(buffers), &stage, algo, std::ref(video), std::ref(proc_init),
                               std::ref(active));
         if (device_type == "xplorer")
@@ -149,6 +151,8 @@ int main(int argc, char *argv[]) {
         processor.join();
     } else {
         std::tie(cal_params, cal_dist) = get_calibration(nullptr, cal_init);
+        proc_init.cal_params = cal_params;
+        proc_init.cal_dist = cal_dist;
         std::thread processor(processing_threads, std::ref(buffers), nullptr, algo, std::ref(video),
                               std::ref(proc_init), std::ref(active));
         if (device_type == "xplorer")
