@@ -299,14 +299,14 @@ void processing_threads(Buffers &buffers, Stage *stage, DBSCAN_KNN T, cv::VideoW
     std::ofstream stageFile(proc_init.event_file + "-stage.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
     std::binary_semaphore update_positions(1);
-    TrackingInfo prev_trackingInfo;
+    WindowInfo prev_trackingInfo;
     StageInfo prev_stageInfo(std::chrono::high_resolution_clock::now(), 0, 0);
     while (active) {
         bool A_processed = false;
         bool B_processed = false;
         if (buffers.PacketQueue.empty())
             continue;
-        std::future<std::tuple<EventInfo, TrackingInfo>> fut_resultA =
+        std::future<WindowInfo> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
                            prev_trackingInfo, &buffers.prev_positions, &update_positions);
         buffers.PacketQueue.pop();
@@ -322,7 +322,7 @@ void processing_threads(Buffers &buffers, Stage *stage, DBSCAN_KNN T, cv::VideoW
             }
             goto fill_processorB;
         }
-        std::future<std::tuple<EventInfo, TrackingInfo>> fut_resultB =
+        std::future<WindowInfo> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
                            prev_trackingInfo, &buffers.prev_positions, &update_positions);
         buffers.PacketQueue.pop();
@@ -343,7 +343,7 @@ void processing_threads(Buffers &buffers, Stage *stage, DBSCAN_KNN T, cv::VideoW
             }
             goto fill_processorC;
         }
-        std::future<std::tuple<EventInfo, TrackingInfo>> fut_resultC =
+        std::future<WindowInfo> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
                            prev_trackingInfo, &buffers.prev_positions, &update_positions);
         buffers.PacketQueue.pop();

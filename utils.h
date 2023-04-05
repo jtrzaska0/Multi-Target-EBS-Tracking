@@ -63,21 +63,24 @@ public:
     }
 };
 
-class TrackingInfo {
+class WindowInfo {
 public:
+    EventInfo event_info;
     arma::mat stage_positions;
     std::string positions_string;
     int prev_x;
     int prev_y;
     int n_samples;
 
-    TrackingInfo() {
+    WindowInfo() {
         prev_x = 0;
         prev_y = 0;
         n_samples = 0;
     }
 
-    TrackingInfo(arma::mat stage_positions, const std::string &positions_string, int prev_x, int prev_y, int n_samples) {
+    WindowInfo(EventInfo event_info, arma::mat stage_positions, const std::string &positions_string, int prev_x,
+               int prev_y, int n_samples) {
+        this->event_info = std::move(event_info);
         this->stage_positions = std::move(stage_positions);
         this->positions_string = positions_string;
         this->prev_x = prev_x;
@@ -219,9 +222,9 @@ arma::mat get_position(const std::string &method, const arma::mat &positions, ar
     return ret;
 }
 
-TrackingInfo
-calculate_window(const ProcessingInit &proc_init, cv::Mat cvmat, arma::mat positions, arma::mat *prev_positions,
-                 std::binary_semaphore *update_positions, int prev_x, int prev_y, int n_samples) {
+WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &event_info, arma::mat positions,
+                            arma::mat *prev_positions, std::binary_semaphore *update_positions, int prev_x,
+                            int prev_y, int n_samples) {
     int y_increment = (int) (proc_init.mag * proc_init.Ny / 2);
     int x_increment = (int) (y_increment * proc_init.Nx / proc_init.Ny);
     std::string positions_string;
@@ -263,7 +266,7 @@ calculate_window(const ProcessingInit &proc_init, cv::Mat cvmat, arma::mat posit
 
             cv::Point p1(x_min, y_min);
             cv::Point p2(x_max, y_max);
-            rectangle(cvmat, p1, p2, cv::Scalar(255, 0, 0), thickness, cv::LINE_8);
+            rectangle(event_info.event_image, p1, p2, cv::Scalar(255, 0, 0), thickness, cv::LINE_8);
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -278,7 +281,7 @@ calculate_window(const ProcessingInit &proc_init, cv::Mat cvmat, arma::mat posit
 
             cv::Point p1_stage(x_min, y_min);
             cv::Point p2_stage(x_max, y_max);
-            rectangle(cvmat, p1_stage, p2_stage, cv::Scalar(0, 0, 255), thickness, cv::LINE_8);
+            rectangle(event_info.event_image, p1_stage, p2_stage, cv::Scalar(0, 0, 255), thickness, cv::LINE_8);
 
             if (proc_init.enable_event_log) {
                 positions_string += std::to_string(timestamp_ms.count()) + ",";
@@ -287,7 +290,7 @@ calculate_window(const ProcessingInit &proc_init, cv::Mat cvmat, arma::mat posit
             }
         }
 
-        cv::putText(cvmat,
+        cv::putText(event_info.event_image,
                     std::string("Objects: ") + std::to_string((int) (stage_positions.size() / 2)), //text
                     cv::Point((int) (0.05 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
                     cv::FONT_HERSHEY_DUPLEX,
@@ -295,7 +298,7 @@ calculate_window(const ProcessingInit &proc_init, cv::Mat cvmat, arma::mat posit
                     CV_RGB(118, 185, 0),
                     2);
 
-        cv::putText(cvmat,
+        cv::putText(event_info.event_image,
                     std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) +
                     std::string(")"), //text
                     cv::Point((int) (0.80 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
@@ -304,7 +307,7 @@ calculate_window(const ProcessingInit &proc_init, cv::Mat cvmat, arma::mat posit
                     CV_RGB(118, 185, 0),
                     2);
     }
-    TrackingInfo info(stage_positions, positions_string, prev_x, prev_y, n_samples);
+    WindowInfo info(event_info, stage_positions, positions_string, prev_x, prev_y, n_samples);
     return info;
 }
 
@@ -341,9 +344,9 @@ EventInfo read_packets(std::vector<double> events, int Nx, int Ny, bool enable_e
 
 // take a packet and run through the entire processing taskflow
 // return a cv mat for plotting and an arma mat for stage positions
-std::tuple<EventInfo, TrackingInfo>
-process_packet(std::vector<double> events, DBSCAN_KNN T, const ProcessingInit &proc_init,
-               const TrackingInfo &prev_tracking, arma::mat *prev_positions, std::binary_semaphore *update_positions) {
+WindowInfo process_packet(std::vector<double> events, DBSCAN_KNN T, const ProcessingInit &proc_init,
+                          const WindowInfo &prev_window, arma::mat *prev_positions,
+                          std::binary_semaphore *update_positions) {
     cv::Mat event_image;
     arma::mat stage_positions;
     std::future<arma::mat> fut_positions = std::async(std::launch::async, run_tracker, events, proc_init.dt, T,
@@ -352,10 +355,9 @@ process_packet(std::vector<double> events, DBSCAN_KNN T, const ProcessingInit &p
                                                        proc_init.Nx, proc_init.Ny, proc_init.enable_event_log);
     arma::mat positions = fut_positions.get();
     EventInfo event_info = fut_event_info.get();
-    TrackingInfo tracking_info = calculate_window(proc_init, event_image, positions, prev_positions, update_positions,
-                                                  prev_tracking.prev_x, prev_tracking.prev_y, prev_tracking.n_samples);
-    std::tuple<EventInfo, TrackingInfo> ret = {event_info, tracking_info};
-    return ret;
+    WindowInfo tracking_info = calculate_window(proc_init, event_info, positions, prev_positions, update_positions,
+                                                prev_window.prev_x, prev_window.prev_y, prev_window.n_samples);
+    return tracking_info;
 }
 
 std::tuple<Calibration, float> get_calibration(Stage *stage, CalibrationInit calInit) {
@@ -423,16 +425,17 @@ StageInfo move_stage(Stage *stage, const ProcessingInit &proc_init, arma::mat po
     return info;
 }
 
-std::tuple<StageInfo, TrackingInfo>
-read_future(std::future<std::tuple<EventInfo, TrackingInfo>> &future, const ProcessingInit &proc_init, const StageInfo &prevStage,
+std::tuple<StageInfo, WindowInfo>
+read_future(std::future<WindowInfo> &future, const ProcessingInit &proc_init, const StageInfo &prevStage,
             std::ofstream &stageFile, std::ofstream &eventFile, Stage *stage, cv::VideoWriter &video) {
-    const auto [event_info, tracking_info] = future.get();
-    update_window("PLOT_EVENTS", event_info.event_image);
-    stageFile << tracking_info.positions_string;
-    eventFile << event_info.event_string;
+    const WindowInfo window_info = future.get();
+    update_window("PLOT_EVENTS", window_info.event_info.event_image);
+    stageFile << window_info.positions_string;
+    eventFile << window_info.event_info.event_string;
     if (proc_init.save_video)
-        video.write(event_info.event_image);
-    StageInfo stage_info = move_stage(stage, proc_init, tracking_info.stage_positions, prevStage.end, prevStage.prev_pan, prevStage.prev_tilt);
-    std::tuple<StageInfo, TrackingInfo> ret = {stage_info, tracking_info};
+        video.write(window_info.event_info.event_image);
+    StageInfo stage_info = move_stage(stage, proc_init, window_info.stage_positions, prevStage.end, prevStage.prev_pan,
+                                      prevStage.prev_tilt);
+    std::tuple<StageInfo, WindowInfo> ret = {stage_info, window_info};
     return ret;
 }

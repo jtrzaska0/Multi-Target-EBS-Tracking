@@ -34,8 +34,6 @@
   "STAGE_SETTINGS": {
     "ENABLE_STAGE": false,
     "FOCAL_LENGTH": 0.006,
-    "NUM_X": 640,
-    "NUM_Y": 480,
     "SEPARATION": 0.15,
     "DISTANCE": 4,
     "PIXEL_SIZE": 0.000009,
