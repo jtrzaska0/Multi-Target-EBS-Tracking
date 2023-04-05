@@ -7,12 +7,103 @@
 
 using json = nlohmann::json;
 
+class ProcessingInit {
+public:
+    double max_speed;
+    double max_acc;
+    double dt;
+    bool enable_tracking;
+    int Nx;
+    int Ny;
+    bool enable_event_log;
+    std::string event_file;
+    double mag;
+    std::string position_method;
+    double eps;
+    bool report_average;
+    double update;
+    int update_time;
+    float cal_dist;
+    Calibration cal_params;
+    CalibrationInit cal_init;
+    bool save_video;
+
+    ProcessingInit(double max_speed, double max_acc, double dt, bool enable_tracking, int Nx, int Ny,
+                   bool enable_event_log, const std::string &event_file, double mag, const std::string &position_method,
+                   double eps, bool report_average, double update, int update_time, float cal_dist, bool save_video) {
+        this->max_speed = max_speed;
+        this->max_acc = max_acc;
+        this->dt = dt;
+        this->enable_tracking = enable_tracking;
+        this->Nx = Nx;
+        this->Ny = Ny;
+        this->enable_event_log = enable_event_log;
+        this->event_file = event_file;
+        this->mag = mag;
+        this->position_method = position_method;
+        this->eps = eps;
+        this->report_average = report_average;
+        this->update = update;
+        this->update_time = update_time;
+        this->cal_dist = cal_dist;
+        this->save_video = save_video;
+    }
+};
+
+class EventInfo {
+public:
+    cv::Mat event_image;
+    std::string event_string;
+
+    EventInfo() = default;
+
+    EventInfo(cv::Mat event_image, const std::string &event_string) {
+        this->event_image = std::move(event_image);
+        this->event_string = event_string;
+    }
+};
+
+class TrackingInfo {
+public:
+    arma::mat stage_positions;
+    std::string positions_string;
+    int prev_x;
+    int prev_y;
+    int n_samples;
+
+    TrackingInfo() {
+        prev_x = 0;
+        prev_y = 0;
+        n_samples = 0;
+    }
+
+    TrackingInfo(arma::mat stage_positions, const std::string &positions_string, int prev_x, int prev_y, int n_samples) {
+        this->stage_positions = std::move(stage_positions);
+        this->positions_string = positions_string;
+        this->prev_x = prev_x;
+        this->prev_y = prev_y;
+        this->n_samples = n_samples;
+    }
+};
+
+class StageInfo {
+public:
+    std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    float prev_pan;
+    float prev_tilt;
+
+    StageInfo(std::chrono::time_point<std::chrono::high_resolution_clock> end, float prev_pan, float prev_tilt) {
+        this->end = end;
+        this->prev_pan = prev_pan;
+        this->prev_tilt = prev_tilt;
+    }
+};
+
 double update_average(int prev_val, int new_val, int n_samples) {
     return (prev_val * n_samples + new_val) / ((double) n_samples + 1);
 }
 
-bool check_move_stage(float pan_position, float prev_pan_position, float tilt_position, float prev_tilt_position,
-                      double update) {
+bool check_move_stage(float pan_position, float prev_pan_position, float tilt_position, float prev_tilt_position, double update) {
     float pan_change = abs((pan_position - prev_pan_position) / prev_pan_position);
     float tilt_change = abs((tilt_position - prev_tilt_position) / prev_tilt_position);
     if (pan_change > update || tilt_change > update)
@@ -69,37 +160,25 @@ arma::mat get_dbscan_positions(const arma::mat &positions_mat, double eps) {
 }
 
 arma::mat run_tracker(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking) {
-    // double free or corruption (out)
     std::vector<double> positions;
-    //double free or corruption (!prev)
     if (!enable_tracking || events.empty()) {
         return positions_vector_to_matrix(positions);
     }
-    //free(): invalid pointer
-    // The detector takes a pointer to events.
     double *mem{events.data()};
-    // Starting time.
     double t0{events[0]};
-
-    // Keep sizes of the vectors in variables.
     int nEvents{(int) events.size() / 4};
     while (true) {
-        // Read all events in one integration time.
         double t1{t0 + dt};
         int N{0};
         for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
             if (mem[4 * N] >= t1)
                 break;
 
-        // Advance starting time.
         t0 = t1;
-        // Feed events to the detector/tracker.
         if (N > 0) {
-            //double free or corruption (!prev), double free or corruption (out), corrupted size vs. prev_size while consolidating
             T(mem, N);
             Eigen::MatrixXd targets{T.currentTracks()};
 
-            // Break once all events have been used and push last positions
             if (t0 > events[4 * (nEvents - 1)]) {
                 for (int i{0}; i < targets.rows(); ++i) {
                     positions.push_back(targets(i, 0));
@@ -107,14 +186,10 @@ arma::mat run_tracker(std::vector<double> events, double dt, DBSCAN_KNN T, bool 
                 }
                 break;
             }
-            // Evolve tracks in time.
             T.predict();
-
-            // Update eventIdx
             mem += 4 * N;
         }
     }
-    //double free or corruption (!prev), corrupted size vs. prev_size while consolidating, free(): invalid pointer
     return positions_vector_to_matrix(positions);
 }
 
@@ -144,28 +219,27 @@ arma::mat get_position(const std::string &method, const arma::mat &positions, ar
     return ret;
 }
 
-std::tuple<arma::mat, std::string, int, int, int>
-calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat *prev_positions, double mag, int Nx, int Ny,
-                 const std::string &position_method, double eps, bool enable_tracking, bool enable_event_log,
-                 std::binary_semaphore *update_positions, int prev_x, int prev_y, int n_samples, bool report_average) {
-    int y_increment = (int) (mag * Ny / 2);
-    int x_increment = (int) (y_increment * Nx / Ny);
+TrackingInfo
+calculate_window(const ProcessingInit &proc_init, cv::Mat cvmat, arma::mat positions, arma::mat *prev_positions,
+                 std::binary_semaphore *update_positions, int prev_x, int prev_y, int n_samples) {
+    int y_increment = (int) (proc_init.mag * proc_init.Ny / 2);
+    int x_increment = (int) (y_increment * proc_init.Nx / proc_init.Ny);
     std::string positions_string;
     arma::mat stage_positions;
     auto start = std::chrono::high_resolution_clock::now();
 
-    if (enable_tracking) {
+    if (proc_init.enable_tracking) {
         int thickness = 2;
         int x_min, x_max, y_min, y_max;
-        stage_positions = get_position(position_method, positions, prev_positions, eps, update_positions);
+        stage_positions = get_position(proc_init.position_method, positions, prev_positions, proc_init.eps, update_positions);
 
         int first_x = 0;
         int first_y = 0;
         if (stage_positions.n_cols > 0) {
             n_samples += 1;
-            first_x = (int) (stage_positions(0, 0) - ((float) Nx / 2));
-            first_y = (int) (((float) Ny / 2) - stage_positions(1, 0));
-            if (report_average) {
+            first_x = (int) (stage_positions(0, 0) - ((float) proc_init.Nx / 2));
+            first_y = (int) (((float) proc_init.Ny / 2) - stage_positions(1, 0));
+            if (proc_init.report_average) {
                 first_x = (int) update_average(prev_x, first_x, n_samples);
                 first_y = (int) update_average(prev_y, first_y, n_samples);
                 if (n_samples > 500)
@@ -184,14 +258,12 @@ calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat *prev_positions, 
 
             y_min = std::max(y - y_increment, 0);
             x_min = std::max(x - x_increment, 0);
-            y_max = std::min(y + y_increment, Ny - 1);
-            x_max = std::min(x + x_increment, Nx - 1);
+            y_max = std::min(y + y_increment, proc_init.Ny - 1);
+            x_max = std::min(x + x_increment, proc_init.Nx - 1);
 
             cv::Point p1(x_min, y_min);
             cv::Point p2(x_max, y_max);
-            rectangle(cvmat, p1, p2,
-                      cv::Scalar(255, 0, 0),
-                      thickness, cv::LINE_8);
+            rectangle(cvmat, p1, p2, cv::Scalar(255, 0, 0), thickness, cv::LINE_8);
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -201,17 +273,14 @@ calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat *prev_positions, 
             int y_stage = (int) stage_positions(1, i);
             y_min = std::max(y_stage - y_increment, 0);
             x_min = std::max(x_stage - x_increment, 0);
-            y_max = std::min(y_stage + y_increment, Ny - 1);
-            x_max = std::min(x_stage + x_increment, Nx - 1);
+            y_max = std::min(y_stage + y_increment, proc_init.Ny - 1);
+            x_max = std::min(x_stage + x_increment, proc_init.Nx - 1);
 
             cv::Point p1_stage(x_min, y_min);
             cv::Point p2_stage(x_max, y_max);
+            rectangle(cvmat, p1_stage, p2_stage, cv::Scalar(0, 0, 255), thickness, cv::LINE_8);
 
-            rectangle(cvmat, p1_stage, p2_stage,
-                      cv::Scalar(0, 0, 255),
-                      thickness, cv::LINE_8);
-
-            if (enable_event_log) {
+            if (proc_init.enable_event_log) {
                 positions_string += std::to_string(timestamp_ms.count()) + ",";
                 positions_string += std::to_string(x_stage) + ",";
                 positions_string += std::to_string(y_stage) + "\n";
@@ -220,7 +289,7 @@ calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat *prev_positions, 
 
         cv::putText(cvmat,
                     std::string("Objects: ") + std::to_string((int) (stage_positions.size() / 2)), //text
-                    cv::Point((int) (0.05 * Nx), (int) (0.95 * Ny)),
+                    cv::Point((int) (0.05 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
                     cv::FONT_HERSHEY_DUPLEX,
                     0.5,
                     CV_RGB(118, 185, 0),
@@ -229,15 +298,14 @@ calculate_window(cv::Mat cvmat, arma::mat positions, arma::mat *prev_positions, 
         cv::putText(cvmat,
                     std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) +
                     std::string(")"), //text
-                    cv::Point((int) (0.80 * Nx), (int) (0.95 * Ny)),
+                    cv::Point((int) (0.80 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
                     cv::FONT_HERSHEY_DUPLEX,
                     0.5,
                     CV_RGB(118, 185, 0),
                     2);
     }
-    std::tuple<arma::mat, std::string, int, int, int> ret = {stage_positions, positions_string, prev_x, prev_y,
-                                                             n_samples};
-    return ret;
+    TrackingInfo info(stage_positions, positions_string, prev_x, prev_y, n_samples);
+    return info;
 }
 
 void update_window(const std::string &winname, const cv::Mat &cvmat) {
@@ -247,12 +315,12 @@ void update_window(const std::string &winname, const cv::Mat &cvmat) {
     }
 }
 
-std::tuple<cv::Mat, std::string> read_packets(std::vector<double> events, int Nx, int Ny, bool enable_event_log) {
+EventInfo read_packets(std::vector<double> events, int Nx, int Ny, bool enable_event_log) {
     std::string event_string;
     cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
     if (events.empty()) {
-        std::tuple<cv::Mat, std::string> ret = {cvEvents, event_string};
-        return ret;
+        EventInfo info;
+        return info;
     }
     for (int i = 0; i < events.size(); i += 4) {
         double ts = events.at(i);
@@ -267,37 +335,26 @@ std::tuple<cv::Mat, std::string> read_packets(std::vector<double> events, int Nx
             event_string += std::to_string(pol) + "\n";
         }
     }
-    std::tuple<cv::Mat, std::string> ret = {cvEvents, event_string};
-    return ret;
+    EventInfo info(cvEvents, event_string);
+    return info;
 }
 
 // take a packet and run through the entire processing taskflow
 // return a cv mat for plotting and an arma mat for stage positions
-std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>
-process_packet(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking,
-               int Nx, int Ny, bool enable_event_log, arma::mat *prev_positions,
-               double mag, const std::string &position_method, double eps, std::binary_semaphore *update_positions,
-               int prev_x, int prev_y, int n_samples, bool report_average) {
+std::tuple<EventInfo, TrackingInfo>
+process_packet(std::vector<double> events, DBSCAN_KNN T, const ProcessingInit &proc_init,
+               const TrackingInfo &prev_tracking, arma::mat *prev_positions, std::binary_semaphore *update_positions) {
     cv::Mat event_image;
     arma::mat stage_positions;
-    std::string event_string;
-    std::string positions_string;
-    std::future<arma::mat> fut_positions = std::async(std::launch::async, run_tracker, events, dt, T, enable_tracking);
-    std::future<std::tuple<cv::Mat, std::string>> fut_event_image = std::async(std::launch::async, read_packets, events,
-                                                                               Nx, Ny, enable_event_log);
+    std::future<arma::mat> fut_positions = std::async(std::launch::async, run_tracker, events, proc_init.dt, T,
+                                                      proc_init.enable_tracking);
+    std::future<EventInfo> fut_event_info = std::async(std::launch::async, read_packets, events,
+                                                       proc_init.Nx, proc_init.Ny, proc_init.enable_event_log);
     arma::mat positions = fut_positions.get();
-    std::tie(event_image, event_string) = fut_event_image.get();
-    std::tie(stage_positions, positions_string, prev_x, prev_y, n_samples) = calculate_window(event_image, positions,
-                                                                                              prev_positions, mag, Nx,
-                                                                                              Ny, position_method, eps,
-                                                                                              enable_tracking,
-                                                                                              enable_event_log,
-                                                                                              update_positions, prev_x,
-                                                                                              prev_y, n_samples,
-                                                                                              report_average);
-    std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int> ret = {event_image, stage_positions,
-                                                                                   event_string, positions_string,
-                                                                                   prev_x, prev_y, n_samples};
+    EventInfo event_info = fut_event_info.get();
+    TrackingInfo tracking_info = calculate_window(proc_init, event_image, positions, prev_positions, update_positions,
+                                                  prev_tracking.prev_x, prev_tracking.prev_y, prev_tracking.n_samples);
+    std::tuple<EventInfo, TrackingInfo> ret = {event_info, tracking_info};
     return ret;
 }
 
@@ -320,79 +377,62 @@ std::tuple<Calibration, float> get_calibration(Stage *stage, CalibrationInit cal
     return ret;
 }
 
-std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float>
-move_stage(Stage *stage, double max_speed, double max_acc, const arma::mat &positions, int nx, int ny, Calibration cal_params,
-           double obj_dist, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan,
-           float prev_tilt, double update,
-           CalibrationInit cal_init, int update_time) {
+StageInfo move_stage(Stage *stage, const ProcessingInit &proc_init, arma::mat positions,
+                     std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan, float prev_tilt) {
     if (stage) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> timestamp_ms = end - last_start;
         if (positions.n_cols > 0) {
             // Go to first position in list. Selecting between objects to be implemented later.
-            double x = positions(0, 0) - ((double) nx / 2);
-            double y = ((double) ny / 2) - positions(1, 0);
+            double x = positions(0, 0) - ((double) proc_init.Nx / 2);
+            double y = ((double) proc_init.Ny / 2) - positions(1, 0);
 
-            double theta = get_theta(y, ny, cal_params.hfovy);
-            double phi = get_phi(x, nx, cal_params.hfovx);
-            double theta_prime = get_theta_prime(phi, theta, cal_init.sep, obj_dist, cal_params.theta_prime_error);
-            double phi_prime = get_phi_prime(phi, theta, cal_init.sep, obj_dist, cal_params.phi_prime_error);
+            double theta = get_theta(y, proc_init.Ny, proc_init.cal_params.hfovy);
+            double phi = get_phi(x, proc_init.Nx, proc_init.cal_params.hfovx);
+            double theta_prime = get_theta_prime(phi, theta, proc_init.cal_init.sep, proc_init.cal_dist, proc_init.cal_params.theta_prime_error);
+            double phi_prime = get_phi_prime(phi, theta, proc_init.cal_init.sep, proc_init.cal_dist, proc_init.cal_params.phi_prime_error);
 
-            float pan_position = get_motor_position(cal_params.begin_pan, cal_params.end_pan, cal_init.begin_pan_angle, cal_init.end_pan_angle, phi_prime);
-            float tilt_position = get_motor_position(cal_params.begin_tilt, cal_params.end_tilt, cal_init.begin_tilt_angle, cal_init.end_tilt_angle,
-                                                     theta_prime);
+            float pan_position = get_motor_position(proc_init.cal_params.begin_pan, proc_init.cal_params.end_pan,
+                                                    proc_init.cal_init.begin_pan_angle, proc_init.cal_init.end_pan_angle, phi_prime);
+            float tilt_position = get_motor_position(proc_init.cal_params.begin_tilt, proc_init.cal_params.end_tilt,
+                                                     proc_init.cal_init.begin_tilt_angle, proc_init.cal_init.end_tilt_angle, theta_prime);
 
-
-            bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, update);
-            if (timestamp_ms.count() > update_time && move) { // Move every 100 ms and if difference is large enough
-                printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI,
-                       phi_prime * 180 / M_PI);
+            bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, proc_init.update);
+            if (timestamp_ms.count() > proc_init.update_time && move) {
+                printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI, phi_prime * 180 / M_PI);
                 printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
-                       pan_position, cal_params.end_pan - cal_params.begin_pan, tilt_position, cal_params.end_tilt - cal_params.begin_tilt);
+                       pan_position, proc_init.cal_params.end_pan - proc_init.cal_params.begin_pan, tilt_position,
+                       proc_init.cal_params.end_tilt - proc_init.cal_params.begin_tilt);
                 printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
 
-                stage->set_position_speed_acceleration(2, pan_position, (float) max_speed * PAN_MAX_SPEED,
-                                                       (float) max_acc * PAN_MAX_ACC);
-                stage->set_position_speed_acceleration(3, tilt_position, (float) max_speed * TILT_MAX_SPEED,
-                                                       (float) max_acc * TILT_MAX_ACC);
-                std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {
-                        std::chrono::high_resolution_clock::now(), pan_position, tilt_position};
-                return ret;
+                stage->set_position_speed_acceleration(2, pan_position, (float) proc_init.max_speed * PAN_MAX_SPEED,
+                                                       (float) proc_init.max_acc * PAN_MAX_ACC);
+                stage->set_position_speed_acceleration(3, tilt_position, (float) proc_init.max_speed * TILT_MAX_SPEED,
+                                                       (float) proc_init.max_acc * TILT_MAX_ACC);
+                StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);
+                return info;
             }
         }
         if (timestamp_ms.count() > 500) { // Ping if stage has been inactive
             stage->get_network_info();
-            std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {
-                    std::chrono::high_resolution_clock::now(), prev_pan, prev_tilt};
-            return ret;
+            StageInfo info(std::chrono::high_resolution_clock::now(), prev_pan, prev_tilt);
+            return info;
         }
     }
-    std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, float, float> ret = {last_start, prev_pan,
-                                                                                                 prev_tilt};
-    return ret;
+    StageInfo info(last_start, prev_pan, prev_tilt);
+    return info;
 }
 
-std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int, float, float>
-read_future(std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> &future,
-            std::ofstream &stageFile, std::ofstream &eventFile, Stage *stage,
-            double max_speed, double max_acc, int nx, int ny, Calibration cal_params, float cal_dist, std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan,
-            float prev_tilt, double update,
-            CalibrationInit cal_init, int update_time,
-            bool save_video, cv::VideoWriter &video) {
-    const auto [image, positions, event_string, positions_string, prev_x, prev_y, n_samples] = future.get();
-    update_window("PLOT_EVENTS", image);
-    stageFile << positions_string;
-    eventFile << event_string;
-    if (save_video)
-        video.write(image);
-    std::chrono::time_point<std::chrono::high_resolution_clock> end;
-    std::tie(end, prev_pan, prev_tilt) = move_stage(stage, max_speed, max_acc, positions, nx, ny, cal_params, cal_dist, last_start, prev_pan,
-                                                    prev_tilt, update, cal_init, update_time);
-    std::tuple<std::chrono::time_point<std::chrono::high_resolution_clock>, int, int, int, float, float> ret = {end,
-                                                                                                                prev_x,
-                                                                                                                prev_y,
-                                                                                                                n_samples,
-                                                                                                                prev_pan,
-                                                                                                                prev_tilt};
+std::tuple<StageInfo, TrackingInfo>
+read_future(std::future<std::tuple<EventInfo, TrackingInfo>> &future, const ProcessingInit &proc_init, const StageInfo &prevStage,
+            std::ofstream &stageFile, std::ofstream &eventFile, Stage *stage, cv::VideoWriter &video) {
+    const auto [event_info, tracking_info] = future.get();
+    update_window("PLOT_EVENTS", event_info.event_image);
+    stageFile << tracking_info.positions_string;
+    eventFile << event_info.event_string;
+    if (proc_init.save_video)
+        video.write(event_info.event_image);
+    StageInfo stage_info = move_stage(stage, proc_init, tracking_info.stage_positions, prevStage.end, prevStage.prev_pan, prevStage.prev_tilt);
+    std::tuple<StageInfo, TrackingInfo> ret = {stage_info, tracking_info};
     return ret;
 }

@@ -124,7 +124,11 @@ int main(int argc, char *argv[]) {
     Calibration cal_params;
     float cal_dist;
     bool active = true;
-    CalibrationInit cal_init(focal_len, sep, dist, px_size, Nx, Ny, correction, prev_cal, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, XK_C);
+    CalibrationInit cal_init(focal_len, sep, dist, px_size, Nx, Ny, correction, prev_cal, begin_pan_angle,
+                             end_pan_angle, begin_tilt_angle, end_tilt_angle, XK_C);
+    ProcessingInit proc_init(max_speed, max_acc, DT, enable_tracking, Nx, Ny,
+                             enable_event_log, event_file, mag, position_method,
+                             eps, report_average, stage_update, update_time, cal_dist, save_video);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS",
                     cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
@@ -136,10 +140,8 @@ int main(int argc, char *argv[]) {
         stage.handshake();
         std::cout << stage.get_device_info().to_string();
         std::tie(cal_params, cal_dist) = get_calibration(&stage, cal_init);
-        std::thread processor(processing_threads, std::ref(buffers), &stage, max_speed, max_acc, DT, algo,
-                              enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                              report_average, stage_update, update_time, std::ref(active), cal_params, cal_dist, cal_init, save_video,
-                              std::ref(video));
+        std::thread processor(processing_threads, std::ref(buffers), &stage, algo, std::ref(video), std::ref(proc_init),
+                              std::ref(active));
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, enable_filter, active);
         else
@@ -147,17 +149,14 @@ int main(int argc, char *argv[]) {
         processor.join();
     } else {
         std::tie(cal_params, cal_dist) = get_calibration(nullptr, cal_init);
-        std::thread processor(processing_threads, std::ref(buffers), nullptr, max_speed, max_acc, DT, algo,
-                              enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                              report_average, stage_update, update_time, std::ref(active), cal_params, cal_dist, cal_init, save_video,
-                              std::ref(video));
+        std::thread processor(processing_threads, std::ref(buffers), nullptr, algo, std::ref(video),
+                              std::ref(proc_init), std::ref(active));
         if (device_type == "xplorer")
             ret = read_xplorer(buffers, noise_params, enable_filter, active);
         else
             ret = read_davis(buffers, noise_params, enable_filter, active);
         processor.join();
     }
-
     cv::destroyWindow("PLOT_EVENTS");
     return ret;
 }

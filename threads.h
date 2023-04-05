@@ -293,31 +293,22 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
     return (EXIT_SUCCESS);
 }
 
-void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double max_acc, double dt, DBSCAN_KNN T,
-                        bool enable_tracking,
-                        int Nx, int Ny, bool enable_event_log, const std::string &event_file,
-                        double mag, const std::string &position_method, double eps, bool report_average, double update,
-                        int update_time, const bool &active,
-                        Calibration cal_params, float cal_dist, CalibrationInit cal_init,
-                        bool save_video, cv::VideoWriter &video) {
+void processing_threads(Buffers &buffers, Stage *stage, DBSCAN_KNN T, cv::VideoWriter &video,
+                        const ProcessingInit &proc_init, const bool &active) {
     auto start = std::chrono::high_resolution_clock::now();
-    std::ofstream stageFile(event_file + "-stage.csv");
-    std::ofstream eventFile(event_file + "-events.csv");
+    std::ofstream stageFile(proc_init.event_file + "-stage.csv");
+    std::ofstream eventFile(proc_init.event_file + "-events.csv");
     std::binary_semaphore update_positions(1);
-    int prev_x = 0;
-    int prev_y = 0;
-    int n_samples = 0;
-    float prev_pan = 0;
-    float prev_tilt = 0;
+    TrackingInfo prev_trackingInfo;
+    StageInfo prev_stageInfo(std::chrono::high_resolution_clock::now(), 0, 0);
     while (active) {
         bool A_processed = false;
         bool B_processed = false;
         if (buffers.PacketQueue.empty())
             continue;
-        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultA =
-                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions,
-                           prev_x, prev_y, n_samples, report_average);
+        std::future<std::tuple<EventInfo, TrackingInfo>> fut_resultA =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
+                           prev_trackingInfo, &buffers.prev_positions, &update_positions);
         buffers.PacketQueue.pop();
 
         fill_processorB:
@@ -326,21 +317,14 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
         if (buffers.PacketQueue.empty()) {
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
-                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
-                                                                                              eventFile, stage,
-                                                                                              max_speed, max_acc, Nx,
-                                                                                              Ny, cal_params, cal_dist, start,
-                                                                                              prev_pan, prev_tilt,
-                                                                                              update, cal_init,
-                                                                                              update_time, save_video,
-                                                                                              video);
+                std::tie(prev_stageInfo, prev_trackingInfo) =
+                        read_future(fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
             }
             goto fill_processorB;
         }
-        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultB =
-                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions,
-                           prev_x, prev_y, n_samples, report_average);
+        std::future<std::tuple<EventInfo, TrackingInfo>> fut_resultB =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
+                           prev_trackingInfo, &buffers.prev_positions, &update_positions);
         buffers.PacketQueue.pop();
 
         fill_processorC:
@@ -349,62 +333,31 @@ void processing_threads(Buffers &buffers, Stage *stage, double max_speed, double
         if (buffers.PacketQueue.empty()) {
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
-                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
-                                                                                              eventFile, stage,
-                                                                                              max_speed, max_acc, Nx,
-                                                                                              Ny, cal_params, cal_dist, start,
-                                                                                              prev_pan, prev_tilt,
-                                                                                              update, cal_init,
-                                                                                              update_time, save_video,
-                                                                                              video);
+                std::tie(prev_stageInfo, prev_trackingInfo) =
+                        read_future(fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
-                std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
-                                                                                              eventFile, stage,
-                                                                                              max_speed, max_acc, Nx,
-                                                                                              Ny, cal_params, cal_dist, start,
-                                                                                              prev_pan, prev_tilt,
-                                                                                              update, cal_init,
-                                                                                              update_time, save_video,
-                                                                                              video);
+                std::tie(prev_stageInfo, prev_trackingInfo) =
+                        read_future(fut_resultB, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
             }
             goto fill_processorC;
         }
-        std::future<std::tuple<cv::Mat, arma::mat, std::string, std::string, int, int, int>> fut_resultC =
-                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), dt, T, enable_tracking, Nx,
-                           Ny, enable_event_log, &buffers.prev_positions, mag, position_method, eps, &update_positions,
-                           prev_x, prev_y, n_samples, report_average);
+        std::future<std::tuple<EventInfo, TrackingInfo>> fut_resultC =
+                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
+                           prev_trackingInfo, &buffers.prev_positions, &update_positions);
         buffers.PacketQueue.pop();
 
         if (!A_processed) {
-            std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
-                                                                                          eventFile, stage,
-                                                                                          max_speed, max_acc, Nx,
-                                                                                          Ny, cal_params, cal_dist, start,
-                                                                                          prev_pan, prev_tilt,
-                                                                                          update, cal_init,
-                                                                                          update_time, save_video,
-                                                                                          video);
+            std::tie(prev_stageInfo, prev_trackingInfo) =
+                    read_future(fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
         }
         if (!B_processed) {
-            std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
-                                                                                          eventFile, stage,
-                                                                                          max_speed, max_acc, Nx,
-                                                                                          Ny, cal_params, cal_dist, start,
-                                                                                          prev_pan, prev_tilt,
-                                                                                          update, cal_init,
-                                                                                          update_time, save_video,
-                                                                                          video);
+            std::tie(prev_stageInfo, prev_trackingInfo) =
+                    read_future(fut_resultB, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
         }
-        std::tie(start, prev_x, prev_y, n_samples, prev_pan, prev_tilt) = read_future(fut_resultA, stageFile,
-                eventFile, stage,
-                max_speed, max_acc, Nx,
-                Ny, cal_params, cal_dist, start,
-                prev_pan, prev_tilt,
-                update, cal_init,
-                update_time, save_video,
-                video);
+        std::tie(prev_stageInfo, prev_trackingInfo) =
+                read_future(fut_resultC, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
     }
     stageFile.close();
     eventFile.close();
