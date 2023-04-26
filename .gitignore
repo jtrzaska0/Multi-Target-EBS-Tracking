@@ -1050,5 +1050,8 @@ dkms.conf
 # EBS Tracking Repo
 Event-Sensor-Detection-and-Tracking/
 
+# FLIR PTU SDK
+ptu-sdk/
+
 # CMakeUserPresets Conan2
 CMakeUserPresets.json
