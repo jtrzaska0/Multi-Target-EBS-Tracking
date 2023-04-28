@@ -2,6 +2,10 @@
 #include <nlohmann/json.hpp>
 #include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
+extern "C" {
+    #include "ptu-sdk/cpi.h"
+    #include "ptu-sdk/examples/estrap.h"
+}
 
 using json = nlohmann::json;
 
@@ -9,7 +13,9 @@ int main(int argc, char *argv[]) {
     /*
 
     Args:
-        argv[1]: Absolute path to config JSON file
+        argv[1]: Absolute path to config JSON file\
+        argv[2]: -p
+        argv[3]: tcp:<FLIR stage IP address>
 
     config.json:
         DEVICE_TYPE: "xplorer" or "davis"
