@@ -46,6 +46,12 @@ Then, `mlpack` should be built and installed from according to the Github page: 
     * `cd .../LiveTracking`
     * `gh repo clone I2SL/Event-Sensor-Detection-and-Tracking`
 
+## FLIR PTU-SDK
+The FLIR PTU-SDK is proprietary and must be purchased prior to running this program. Once the SDK libraries are built
+according to the provided instructions, create a folder named `ptu-sdk` in the working directory. Then put the contents
+of the PTU-SDK in this folder so that `cpi.h`, `libcpi.a`, `cerial/`, and `examples/` are directly under the `ptu-sdk/`
+directory. This program uses PTU-SDK version `2.0.4`.
+
 ## opencv
 
 1. https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html
