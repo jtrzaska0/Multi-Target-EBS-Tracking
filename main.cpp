@@ -3,7 +3,6 @@
 #include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
 extern "C" {
-    #include "ptu-sdk/cpi.h"
     #include "ptu-sdk/examples/estrap.h"
 }
 
