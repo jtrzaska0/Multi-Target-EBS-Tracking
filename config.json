@@ -6,6 +6,7 @@
     "COMMAND_METHOD": "median-history",
     "EPSILON": 50,
     "MAGNIFICATION": 0.0645,
+    "OBJECT_DIST": 3.0,
     "ENABLE_LOGGING": false,
     "EVENT_FILEPATH": "data",
     "SAVE_VIDEO": false,

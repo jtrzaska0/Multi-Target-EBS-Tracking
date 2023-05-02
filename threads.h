@@ -14,8 +14,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <X11/keysym.h>
-#include <kssp/tools/calibrator.h>
-
+#include <kssp/tools/pointer_utils.h>
 #include "utils.h"
 
 using json = nlohmann::json;
@@ -293,8 +292,7 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
     return (EXIT_SUCCESS);
 }
 
-void processing_threads(Buffers &buffers, Stage *stage, DBSCAN_KNN T, cv::VideoWriter &video,
-                        const ProcessingInit &proc_init, const bool &active) {
+void processing_threads(struct cerial *cer, Buffers &buffers, DBSCAN_KNN T, cv::VideoWriter &video, const ProcessingInit &proc_init, const bool &active) {
     auto start = std::chrono::high_resolution_clock::now();
     std::ofstream stageFile(proc_init.event_file + "-stage.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
@@ -318,7 +316,7 @@ void processing_threads(Buffers &buffers, Stage *stage, DBSCAN_KNN T, cv::VideoW
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
+                        read_future(cer, fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, video);
             }
             goto fill_processorB;
         }
@@ -334,12 +332,12 @@ void processing_threads(Buffers &buffers, Stage *stage, DBSCAN_KNN T, cv::VideoW
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
+                        read_future(cer, fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, video);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(fut_resultB, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
+                        read_future(cer, fut_resultB, proc_init, prev_stageInfo, stageFile, eventFile, video);
             }
             goto fill_processorC;
         }
@@ -350,14 +348,14 @@ void processing_threads(Buffers &buffers, Stage *stage, DBSCAN_KNN T, cv::VideoW
 
         if (!A_processed) {
             std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
+                    read_future(cer, fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, video);
         }
         if (!B_processed) {
             std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(fut_resultB, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
+                    read_future(cer, fut_resultB, proc_init, prev_stageInfo, stageFile, eventFile, video);
         }
         std::tie(prev_stageInfo, prev_trackingInfo) =
-                read_future(fut_resultC, proc_init, prev_stageInfo, stageFile, eventFile, stage, video);
+                read_future(cer, fut_resultC, proc_init, prev_stageInfo, stageFile, eventFile, video);
     }
     stageFile.close();
     eventFile.close();

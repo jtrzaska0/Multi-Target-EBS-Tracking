@@ -1,10 +1,11 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <kssp/tools/pointer_utils.h>
+extern "C" {
+#include "ptu-sdk/examples/estrap.h"
+}
 #include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
-extern "C" {
-    #include "ptu-sdk/examples/estrap.h"
-}
 
 using json = nlohmann::json;
 
@@ -38,10 +39,21 @@ int main(int argc, char *argv[]) {
         0
     */
 
-    if (argc != 2) {
-        printf("Invalid number of arguments.\n");
+    struct cerial *cer;
+    uint16_t status;
+    int pn, px, tn, tx, pu, tu;
+
+    if((cer = estrap_in(argc, argv)) == nullptr)
         return 1;
-    }
+    // Set terse mode
+    if(cpi_ptcmd(cer, &status, OP_FEEDBACK_SET, CPI_ASCII_FEEDBACK_TERSE))
+        die("Failed to set feedback mode.\n");
+
+    // Get min/max positions and speed
+    if(cpi_ptcmd(cer, &status, OP_PAN_MAX_POSITION, &px) || cpi_ptcmd(cer, &status, OP_PAN_MIN_POSITION, &pn) ||
+       cpi_ptcmd(cer, &status, OP_TILT_MAX_POSITION, &tx) || cpi_ptcmd(cer, &status, OP_TILT_MIN_POSITION, &tn) ||
+       cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_GET, &pu) || cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_GET, &tu))
+        die("Basic unit queries failed.\n");
 
     std::string config_file = {std::string(argv[1])};
     std::ifstream f(config_file);
@@ -57,14 +69,15 @@ int main(int argc, char *argv[]) {
     std::string position_method = params.value("COMMAND_METHOD", "median-history");
     double eps = params.value("EPSILON", 15);
     double mag = params.value("MAGNIFICATION", 0.05);
+    float cal_dist = (float)params.value("OBJECT_DIST", 999999.9);
     bool enable_event_log = params.value("ENABLE_LOGGING", false);
     std::string event_file = params.value("EVENT_FILEPATH", "recording");
     double stage_update = stage_params.value("STAGE_UPDATE", 0.02);
     int update_time = stage_params.value("UPDATE_TIME", 100);
     bool report_average = params.value("REPORT_AVERAGE", false);
     const int history_size = params.value("HISTORY_SIZE", 12);
-    double max_speed = params.value("MAX_SPEED", 0.6);
-    double max_acc = params.value("MAX_ACCELERATION", 1);
+    //double max_speed = params.value("MAX_SPEED", 0.6);
+    //double max_acc = params.value("MAX_ACCELERATION", 1);
     bool enable_filter = noise_params.value("ENABLE_FILTER", false);
     bool save_video = params.value("SAVE_VIDEO", false);
     std::string video_file = params.value("VIDEO_FILEPATH", "output.mp4");
@@ -73,8 +86,8 @@ int main(int argc, char *argv[]) {
     double sep = stage_params.value("SEPARATION", 0.15);
     double dist = stage_params.value("DISTANCE", 10);
     double px_size = stage_params.value("PIXEL_SIZE", 0.000009);
-    bool correction = stage_params.value("SYSTEMATIC_ERROR", false);
-    bool prev_cal = stage_params.value("USE_PREVIOUS", false);
+    //bool correction = stage_params.value("SYSTEMATIC_ERROR", false);
+    //bool prev_cal = stage_params.value("USE_PREVIOUS", false);
     float begin_pan_angle = (float) stage_params.value("START_PAN_ANGLE", -M_PI_2);
     float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
     float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", 0);
@@ -126,46 +139,24 @@ int main(int argc, char *argv[]) {
     }
 
     int ret;
-    Calibration cal_params;
-    float cal_dist;
     bool active = true;
-    CalibrationInit cal_init(focal_len, sep, dist, px_size, Nx, Ny, correction, prev_cal, begin_pan_angle,
-                             end_pan_angle, begin_tilt_angle, end_tilt_angle, XK_C);
-    ProcessingInit proc_init(cal_params, cal_init, max_speed, max_acc, DT, enable_tracking, Nx, Ny,
-                             enable_event_log, event_file, mag, position_method,
-                             eps, report_average, stage_update, update_time, cal_dist, save_video);
+    double hfovx = get_hfov(focal_len, dist, Nx, px_size);
+    double hfovy = get_hfov(focal_len, dist, Ny, px_size);
+    ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag,
+                             position_method, eps, report_average, stage_update, update_time, cal_dist, save_video,
+                             enable_stage, hfovx, hfovy, sep, 0, 0, (float)pn, (float)px, (float)tn, (float)tx,
+                             begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
     cv::startWindowThread();
-    cv::namedWindow("PLOT_EVENTS",
-                    cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
-                    cv::WindowFlags::WINDOW_GUI_EXPANDED);
+    cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
 
-    if (enable_stage) {
-        Stage stage("192.168.50.1", 5520);
-        stage.handshake();
-        std::cout << stage.get_device_info().to_string();
-        std::tie(cal_params, cal_dist) = get_calibration(&stage, cal_init);
-        proc_init.cal_params = cal_params;
-        proc_init.cal_dist = cal_dist;
-        std::thread processor(processing_threads, std::ref(buffers), &stage, algo, std::ref(video), std::ref(proc_init),
-                              std::ref(active));
-        if (device_type == "xplorer")
-            ret = read_xplorer(buffers, noise_params, enable_filter, active);
-        else
-            ret = read_davis(buffers, noise_params, enable_filter, active);
-        processor.join();
-    } else {
-        std::tie(cal_params, cal_dist) = get_calibration(nullptr, cal_init);
-        proc_init.cal_params = cal_params;
-        proc_init.cal_dist = cal_dist;
-        std::thread processor(processing_threads, std::ref(buffers), nullptr, algo, std::ref(video),
-                              std::ref(proc_init), std::ref(active));
-        if (device_type == "xplorer")
-            ret = read_xplorer(buffers, noise_params, enable_filter, active);
-        else
-            ret = read_davis(buffers, noise_params, enable_filter, active);
-        processor.join();
-    }
+    std::thread processor(processing_threads, cer, std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(active));
+    if (device_type == "xplorer")
+        ret = read_xplorer(buffers, noise_params, enable_filter, active);
+    else
+        ret = read_davis(buffers, noise_params, enable_filter, active);
+    processor.join();
+
     cv::destroyWindow("PLOT_EVENTS");
     return ret;
 }

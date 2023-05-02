@@ -11,7 +11,7 @@ First, install the dependencies:
 5. `sudo apt-get install libensmallen-dev`
 6. `sudo apt-get install libcereal-dev`
 
-Then, `mlpack` should be built and installed from according to the Github page: https://github.com/mlpack/mlpack
+Then, `mlpack` should be built and installed from according to the GitHub page: https://github.com/mlpack/mlpack
 
 1. `git clone https://github.com/mlpack/mlpack`
 2. `cd mlpack`
@@ -59,6 +59,12 @@ directory. This program uses PTU-SDK version `2.0.4`.
 ## libcaer
 
 1. https://gitlab.com/inivation/dv/libcaer
+
+## To Do:
+* Reimplement systematic errors
+* Reimplement speed/acceleration/boundaries in JSON
+* Clean up position calculator
+* Remove dependence on kssp
 
 ## References
 
