@@ -13,7 +13,6 @@
 #include <opencv2/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-#include <X11/keysym.h>
 #include <kssp/tools/pointer_utils.h>
 #include "utils.h"
 

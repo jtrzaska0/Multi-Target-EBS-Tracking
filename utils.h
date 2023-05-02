@@ -414,6 +414,7 @@ StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::
                 printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
 
                 uint16_t status;
+                tilt_position = 4500 - tilt_position;
                 cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, (int)pan_position);
                 cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, (int)tilt_position);
                 StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);

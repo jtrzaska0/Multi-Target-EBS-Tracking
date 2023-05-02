@@ -1,6 +1,5 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
-#include <kssp/tools/pointer_utils.h>
 extern "C" {
 #include "ptu-sdk/examples/estrap.h"
 }
@@ -13,7 +12,7 @@ int main(int argc, char *argv[]) {
     /*
 
     Args:
-        argv[1]: Absolute path to config JSON file\
+        argv[1]: Absolute path to config JSON file
         argv[2]: -p
         argv[3]: tcp:<FLIR stage IP address>
 
@@ -55,7 +54,10 @@ int main(int argc, char *argv[]) {
        cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_GET, &pu) || cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_GET, &tu))
         die("Basic unit queries failed.\n");
 
-    std::string config_file = {std::string(argv[1])};
+    printf("Min Pan: %0.2f deg\nMax Pan: %0.2f deg\n", pn*0.02, px*0.02);
+    printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", tn*0.02, tx*0.02);
+
+    std::string config_file = {std::string(argv[3])};
     std::ifstream f(config_file);
     json settings = json::parse(f);
     json params = settings["PROGRAM_PARAMETERS"];
