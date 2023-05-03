@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
     double hfovy = get_hfov(focal_len, dist, Ny, px_size);
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag,
                              position_method, eps, report_average, stage_update, update_time, cal_dist, save_video,
-                             enable_stage, hfovx, hfovy, sep, 0, 0, (float)pn, (float)px, (float)tn, (float)tx,
+                             enable_stage, hfovx, hfovy, sep, 0, 0, pn, px, tn, tx,
                              begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);

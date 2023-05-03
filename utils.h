@@ -29,10 +29,10 @@ public:
     double sep;
     double theta_prime_error;
     double phi_prime_error;
-    float begin_pan;
-    float end_pan;
-    float begin_tilt;
-    float end_tilt;
+    int begin_pan;
+    int end_pan;
+    int begin_tilt;
+    int end_tilt;
     float begin_pan_angle;
     float end_pan_angle;
     float begin_tilt_angle;
@@ -41,8 +41,8 @@ public:
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
                    double mag, const std::string &position_method, double eps, bool report_average, double update,
                    int update_time, float cal_dist, bool save_video, bool enable_stage, double hfovx, double hfovy,
-                   double sep, double theta_prime_error, double phi_prime_error, float begin_pan, float end_pan,
-                   float begin_tilt, float end_tilt, float begin_pan_angle, float end_pan_angle, float begin_tilt_angle,
+                   double sep, double theta_prime_error, double phi_prime_error, int begin_pan, int end_pan,
+                   int begin_tilt, int end_tilt, float begin_pan_angle, float end_pan_angle, float begin_tilt_angle,
                    float end_tilt_angle) {
         this->dt = dt;
         this->enable_tracking = enable_tracking;
@@ -117,10 +117,10 @@ public:
 class StageInfo {
 public:
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
-    float prev_pan;
-    float prev_tilt;
+    int prev_pan;
+    int prev_tilt;
 
-    StageInfo(std::chrono::time_point<std::chrono::high_resolution_clock> end, float prev_pan, float prev_tilt) {
+    StageInfo(std::chrono::time_point<std::chrono::high_resolution_clock> end, int prev_pan, int prev_tilt) {
         this->end = end;
         this->prev_pan = prev_pan;
         this->prev_tilt = prev_tilt;
@@ -131,9 +131,9 @@ double update_average(int prev_val, int new_val, int n_samples) {
     return (prev_val * n_samples + new_val) / ((double) n_samples + 1);
 }
 
-bool check_move_stage(float pan_position, float prev_pan_position, float tilt_position, float prev_tilt_position, double update) {
-    float pan_change = abs((pan_position - prev_pan_position) / prev_pan_position);
-    float tilt_change = abs((tilt_position - prev_tilt_position) / prev_tilt_position);
+bool check_move_stage(int pan_position, int prev_pan_position, int tilt_position, int prev_tilt_position, double update) {
+    float pan_change = abs((float)(pan_position - prev_pan_position) / (float)prev_pan_position);
+    float tilt_change = abs((float)(tilt_position - prev_tilt_position) / (float)prev_tilt_position);
     if (pan_change > update || tilt_change > update)
         return true;
     return false;
@@ -386,8 +386,8 @@ WindowInfo process_packet(std::vector<double> events, DBSCAN_KNN T, const Proces
 }
 
 StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::mat positions,
-                     std::chrono::time_point<std::chrono::high_resolution_clock> last_start, float prev_pan,
-                     float prev_tilt) {
+                     std::chrono::time_point<std::chrono::high_resolution_clock> last_start, int prev_pan,
+                     int prev_tilt) {
     if (proc_init.enable_stage) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> timestamp_ms = end - last_start;
@@ -400,23 +400,24 @@ StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::
             double phi = get_phi(x, proc_init.Nx, proc_init.hfovx);
             double theta_prime = get_theta_prime(phi, theta, proc_init.sep, proc_init.cal_dist, proc_init.theta_prime_error);
             double phi_prime = get_phi_prime(phi, theta, proc_init.sep, proc_init.cal_dist, proc_init.phi_prime_error);
-            float pan_position = get_motor_position(proc_init.begin_pan, proc_init.end_pan,
+            int pan_position = get_motor_position(proc_init.begin_pan, proc_init.end_pan,
                                                     proc_init.begin_pan_angle, proc_init.end_pan_angle, phi_prime);
-            float tilt_position = get_motor_position(proc_init.begin_tilt, proc_init.end_tilt,
+            // Convert tilt to FLIR frame
+            theta_prime = M_PI_2 - theta_prime;
+            int tilt_position = get_motor_position(proc_init.begin_tilt, proc_init.end_tilt,
                                                      proc_init.begin_tilt_angle, proc_init.end_tilt_angle, theta_prime);
 
             bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, proc_init.update);
             if (timestamp_ms.count() > proc_init.update_time && move) {
                 printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI, phi_prime * 180 / M_PI);
-                printf("Stage Positions:\n     Pan: %0.2f (End: %0.2f)\n     Tilt: %0.2f (End: %0.2f)\n",
-                       pan_position, proc_init.end_pan - proc_init.begin_pan, tilt_position,
-                       proc_init.end_tilt - proc_init.begin_tilt);
+                printf("Stage Positions:\n     Pan: %hd (End: %hd)\n     Tilt: %hd (End: %hd)\n",
+                       pan_position, proc_init.end_pan, tilt_position,
+                       proc_init.end_tilt);
                 printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
 
                 uint16_t status;
-                tilt_position = 4500 - tilt_position;
-                cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, (int)pan_position);
-                cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, (int)tilt_position);
+                cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_position);
+                cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_position);
                 StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);
                 return info;
             }
