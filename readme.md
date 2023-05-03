@@ -64,7 +64,6 @@ directory. This program uses PTU-SDK version `2.0.4`.
 * Reimplement systematic errors
 * Reimplement speed/acceleration/boundaries in JSON
 * Clean up position calculator
-* Remove dependence on kssp
 * Fix `enable_stage`
 
 ## References
