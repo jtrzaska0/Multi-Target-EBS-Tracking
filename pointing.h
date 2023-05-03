@@ -96,6 +96,6 @@ int get_motor_position(int motor_begin, int motor_end, float ref_begin, float re
         motor_position: desired position in reference frame expressed as a motor position, bounded by the calibration
     */
     float slope = (float)(motor_end - motor_begin) / (ref_end - ref_begin);
-    int target =  (int)(slope*(ref_target-ref_begin));
+    int target =  (int)(slope*(ref_target-ref_begin) + motor_begin);
     return std::max(std::min(motor_end, target), motor_begin);
 }

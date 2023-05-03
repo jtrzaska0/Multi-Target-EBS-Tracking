@@ -410,9 +410,9 @@ StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::
             bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, proc_init.update);
             if (timestamp_ms.count() > proc_init.update_time && move) {
                 printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI, phi_prime * 180 / M_PI);
-                printf("Stage Positions:\n     Pan: %hd (End: %hd)\n     Tilt: %hd (End: %hd)\n",
-                       pan_position, proc_init.end_pan, tilt_position,
-                       proc_init.end_tilt);
+                printf("Stage Positions:\n     Pan: %d (%d, %d)\n     Tilt: %d (%d, %d)\n",
+                       pan_position, proc_init.begin_pan, proc_init.end_pan, tilt_position,
+                       proc_init.begin_tilt, proc_init.end_tilt);
                 printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
 
                 uint16_t status;

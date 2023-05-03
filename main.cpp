@@ -92,8 +92,8 @@ int main(int argc, char *argv[]) {
     //bool prev_cal = stage_params.value("USE_PREVIOUS", false);
     float begin_pan_angle = (float) stage_params.value("START_PAN_ANGLE", -M_PI_2);
     float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
-    float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", 0);
-    float end_tilt_angle = (float) stage_params.value("END_TILT_ANGLE", 2 * M_PI / 3);
+    float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", -M_PI / 6);
+    float end_tilt_angle = (float) stage_params.value("END_TILT_ANGLE", M_PI / 6);
     Buffers buffers(history_size);
 
     /**Create an Algorithm object here.**/
