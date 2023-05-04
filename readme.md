@@ -61,7 +61,7 @@ directory. This program uses PTU-SDK version `2.0.4`.
 1. https://gitlab.com/inivation/dv/libcaer
 
 ## To Do:
-* Reimplement systematic errors
+* Incorporate NFOV tracking
 
 ## References
 

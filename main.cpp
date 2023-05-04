@@ -67,8 +67,7 @@ int main(int argc, char *argv[]) {
     double sep = stage_params.value("SEPARATION", 0.15);
     double dist = stage_params.value("DISTANCE", 10);
     double px_size = stage_params.value("PIXEL_SIZE", 0.000009);
-    //bool correction = stage_params.value("SYSTEMATIC_ERROR", false);
-    //bool prev_cal = stage_params.value("USE_PREVIOUS", false);
+    bool correction = stage_params.value("SYSTEMATIC_ERROR", false);
     float begin_pan_angle = (float) stage_params.value("START_PAN_ANGLE", -M_PI_2);
     float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
     float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", -M_PI / 6);
@@ -157,9 +156,49 @@ int main(int argc, char *argv[]) {
         printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", min_tilt_pos * 0.02, max_tilt_pos * 0.02);
     }
 
+    double theta_prime_error{}, phi_prime_error{};
+    if (correction) {
+        std::thread driver(controller, cer, XK_C);
+        float pan_position;
+        float tilt_position;
+        double r;
+        double x;
+        double y;
+        printf("Center camera on known target and press `Q`.\n");
+        while (true) {
+            bool q_pressed = key_is_pressed(XK_Q);
+            if (q_pressed) {
+                cpi_ptcmd(cer, &status, OP_PAN_CURRENT_POS_GET, &pan_position);
+                cpi_ptcmd(cer, &status, OP_TILT_CURRENT_POS_GET, &tilt_position);
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        printf("Enter target distance (m):\n");
+        std::cin >> r;
+        printf("Enter target x coordinate:\n");
+        std::cin >> x;
+        printf("Enter target y coordinate:\n");
+        std::cin >> y;
+
+        double phi = get_phi(x, Nx, hfovx);
+        double theta = get_theta(y, Ny, hfovy);
+        theta = M_PI_2 - theta;
+        double phi_prime_estimate = get_phi_prime(phi, theta, sep, r, 0);
+        double theta_prime_estimate = get_theta_prime(phi, theta, sep, r, 0);
+        double phi_prime_actual = (double)pan_position * M_PI / 9000.0;
+        double theta_prime_actual = (double)tilt_position * M_PI / 9000.0;
+        phi_prime_error = (phi_prime_actual - phi_prime_estimate);
+        theta_prime_error = (theta_prime_actual - theta_prime_estimate);
+        printf("Estimated theta_p/phi_p: (%.2f, %.2f)\n", theta_prime_estimate * 180 / M_PI, phi_prime_estimate * 180 / M_PI);
+        printf("Actual theta_p/phi_p: (%.2f, %.2f)\n", theta_prime_actual * 180 / M_PI, phi_prime_actual * 180 / M_PI);
+        printf("Calibration complete. Press C to exit manual control.\n");
+        driver.join();
+    }
+
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
                              report_average, stage_update, update_time, cal_dist, save_video, enable_stage, hfovx, hfovy,
-                             sep, 0, 0, min_pan_pos, max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle,
+                             sep, theta_prime_error, phi_prime_error, min_pan_pos, max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle,
                              end_pan_angle, begin_tilt_angle, end_tilt_angle);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
