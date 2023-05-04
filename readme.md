@@ -1,18 +1,17 @@
 # Installation
 
 ## mlpack
-
 First, install the dependencies:
+```
+sudo apt-get install liblapack-dev
+sudo apt-get install libblas-dev
+sudo apt-get install libboost-dev
+sudo apt-get install libarmadillo-dev
+sudo apt-get install libensmallen-dev
+sudo apt-get install libcereal-dev
+```
 
-1. `sudo apt-get install liblapack-dev`
-2. `sudo apt-get install libblas-dev`
-3. `sudo apt-get install libboost-dev`
-4. `sudo apt-get install libarmadillo-dev`
-5. `sudo apt-get install libensmallen-dev`
-6. `sudo apt-get install libcereal-dev`
-
-Then, `mlpack` should be built and installed from according to the GitHub page: https://github.com/mlpack/mlpack
-
+Then, `mlpack` should be built and installed by following the [GitHub page:](https://github.com/mlpack/mlpack)
 1. `git clone https://github.com/mlpack/mlpack`
 2. `cd mlpack`
 3. `mkdir build && cd build/`
@@ -20,7 +19,8 @@ Then, `mlpack` should be built and installed from according to the GitHub page: 
 5. `sudo make install`
 
 ## conan
-
+This program relies on the Conan package manager to install the Eigen and Nlohmann JSON libraries. Installing Conan is
+not required if you have these libraries already and CMake can find them.
 1. [Install Conan](https://docs.conan.io/2/installation.html)
 2. Generate a Conan profile by running `conan profile detect --force`
 3. The generated profile (located in `~/.conan2/profiles`) should resemble
@@ -36,15 +36,16 @@ Then, `mlpack` should be built and installed from according to the GitHub page: 
    ```
 4. `cd` into working directory
 5. `conan install . -pr:b=default --output-folder=build --build=missing`
-6. `cd build`
-7. `cmake -DCMAKE_C_COMPILER=gcc-11 -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release ..`
-8. `make`
+
+When the other dependencies are installed, you can build by running:
+1. `cd build`
+2. `cmake -DCMAKE_C_COMPILER=gcc-11 -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release ..`
+3. `make`
 
 ## Event Sensor Detection and Tracking
-
-1. Clone the Event Sensor Detection and Tracking repo into the working directory
-    * `cd .../LiveTracking`
-    * `gh repo clone I2SL/Event-Sensor-Detection-and-Tracking`
+To install the tracking algorithm, simply clone the Event Sensor Detection and Tracking repo into the working directory:
+1. `cd .../LiveTracking`
+2. `gh repo clone I2SL/Event-Sensor-Detection-and-Tracking`
 
 ## FLIR PTU-SDK
 The FLIR PTU-SDK is proprietary and must be purchased prior to running this program. Once the SDK libraries are built
@@ -53,16 +54,20 @@ of the PTU-SDK in this folder so that `cpi.h`, `libcpi.a`, `cerial/`, and `examp
 directory. This program uses PTU-SDK version `2.0.4`.
 
 ## opencv
-
-1. https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html
+OpenCV should be installed by following the instructions on [their website.](https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html)
+It should be installed **with contributions**.
 
 ## libcaer
+The `libcaer` library should be installed by following the instructions found on their [GitLab page.](https://gitlab.com/inivation/dv/libcaer)
 
-1. https://gitlab.com/inivation/dv/libcaer
+## Usage
+To run the program, enter the following command in the terminal: `./LiveTracking -p tcp:<FLIR IP ADDR> <PATH TO CONFIG JSON>`.
+The program expects three arguments even when the stage is not in use. If the FLIR stage is not present, or you do not
+want to enable it, you should adjust the appropriate setting in the JSON file but still enter three arguments in the
+terminal. In this case, the content of the first two arguments will not matter.
 
 ## To Do:
 * Incorporate NFOV tracking
 
 ## References
-
 1. https://gist.github.com/Yousha/3830712334ac30a90eb6041b932b68d7
