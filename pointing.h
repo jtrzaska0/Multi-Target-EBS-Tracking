@@ -99,3 +99,87 @@ int get_motor_position(int motor_begin, int motor_end, float ref_begin, float re
     int target =  (int)(slope*(ref_target-ref_begin) + motor_begin);
     return std::max(std::min(motor_end, target), motor_begin);
 }
+
+void controller(struct cerial *cer, KeySym ks)
+// Drive stage with manual controls. Use up/down arrow keys to adjust the speed
+// ks is the key to stop this function. It can be anything except WASDQE or the
+// arrow keys.
+{
+    printf("\n");
+    printf("CONTROLS:\n");
+    printf("---------\n");
+    printf("Tilt Up: 'W'\n");
+    printf("Tilt Down: 'S'\n");
+    printf("Pan Left: 'A'\n");
+    printf("Pan Right: 'D'\n");
+    printf("Slide Left: Left Arrow\n");
+    printf("Slide Right: Right Arrow\n");
+    printf("Speed Up: Up Arrow\n");
+    printf("Speed Down: Down Arrow\n");
+    printf("Stop: %s\n", XKeysymToString(ks));
+
+    // Get max speeds
+    int pan_speed, tilt_speed;
+    uint16_t status;
+    if (cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_GET, &pan_speed) ||
+        cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_GET, &tilt_speed))
+        die("Basic unit queries failed.\n");
+
+    bool running = true;
+    int speed = 0;
+
+    int prev_tilt_dir = 0;
+    int prev_pan_dir = 0;
+
+    while (running) {
+        const bool w_pressed = key_is_pressed(XK_W);
+        const bool s_pressed = key_is_pressed(XK_S);
+        const bool a_pressed = key_is_pressed(XK_A);
+        const bool d_pressed = key_is_pressed(XK_D);
+        const bool up_pressed = key_is_pressed(XK_Up);
+        const bool down_pressed = key_is_pressed(XK_Down);
+        const float speed_p = (float)speed / 100;
+
+        int tilt_dir = 0;
+        if (w_pressed)
+            tilt_dir = 1;
+        if (s_pressed)
+            tilt_dir = -1;
+
+        if (prev_tilt_dir != tilt_dir) {
+            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_SPEED_SET, (int)((float)tilt_dir*(float)tilt_speed*speed_p));
+            prev_tilt_dir = tilt_dir;
+        }
+
+        int pan_dir = 0;
+        if (d_pressed)
+            pan_dir = 1;
+        if (a_pressed)
+            pan_dir = -1;
+
+        if (prev_pan_dir != pan_dir) {
+            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_SPEED_SET, (int)((float)pan_dir*(float)pan_speed*speed_p));
+            prev_pan_dir = pan_dir;
+        }
+
+        int speed_dir = 0;
+        if (up_pressed)
+            speed_dir = 1;
+        if (down_pressed)
+            speed_dir = -1;
+
+        speed = std::clamp(speed + 1 * speed_dir, 0, 100);
+        if (speed_dir != 0)
+            printf("Speed: %d\n", speed);
+
+        if (key_is_pressed(ks)) {
+            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_SPEED_SET, pan_speed);
+            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_SPEED_SET, tilt_speed);
+            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, 0);
+            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, 0);
+            running = false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
