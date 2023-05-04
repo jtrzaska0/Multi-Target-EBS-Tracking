@@ -38,25 +38,6 @@ int main(int argc, char *argv[]) {
         0
     */
 
-    struct cerial *cer;
-    uint16_t status;
-    int pn, px, tn, tx, pu, tu;
-
-    if((cer = estrap_in(argc, argv)) == nullptr)
-        return 1;
-    // Set terse mode
-    if(cpi_ptcmd(cer, &status, OP_FEEDBACK_SET, CPI_ASCII_FEEDBACK_TERSE))
-        die("Failed to set feedback mode.\n");
-
-    // Get min/max positions and speed
-    if(cpi_ptcmd(cer, &status, OP_PAN_MAX_POSITION, &px) || cpi_ptcmd(cer, &status, OP_PAN_MIN_POSITION, &pn) ||
-       cpi_ptcmd(cer, &status, OP_TILT_MAX_POSITION, &tx) || cpi_ptcmd(cer, &status, OP_TILT_MIN_POSITION, &tn) ||
-       cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_GET, &pu) || cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_GET, &tu))
-        die("Basic unit queries failed.\n");
-
-    printf("Min Pan: %0.2f deg\nMax Pan: %0.2f deg\n", pn*0.02, px*0.02);
-    printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", tn*0.02, tx*0.02);
-
     std::string config_file = {std::string(argv[3])};
     std::ifstream f(config_file);
     json settings = json::parse(f);
@@ -144,6 +125,30 @@ int main(int argc, char *argv[]) {
     bool active = true;
     double hfovx = get_hfov(focal_len, dist, Nx, px_size);
     double hfovy = get_hfov(focal_len, dist, Ny, px_size);
+
+    struct cerial *cer = nullptr;
+    uint16_t status;
+    int pn{}, px{}, tn{}, tx{}, pu{}, tu{};
+    if (enable_stage) {
+        if ((cer = estrap_in(argc, argv)) == nullptr) {
+            printf("Failed to connect to stage.\n");
+            return 1;
+        }
+        // Set terse mode
+        if (cpi_ptcmd(cer, &status, OP_FEEDBACK_SET, CPI_ASCII_FEEDBACK_TERSE))
+            die("Failed to set feedback mode.\n");
+
+        // Get min/max positions and speed
+        if (cpi_ptcmd(cer, &status, OP_PAN_MAX_POSITION, &px) || cpi_ptcmd(cer, &status, OP_PAN_MIN_POSITION, &pn) ||
+            cpi_ptcmd(cer, &status, OP_TILT_MAX_POSITION, &tx) || cpi_ptcmd(cer, &status, OP_TILT_MIN_POSITION, &tn) ||
+            cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_GET, &pu) ||
+            cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_GET, &tu))
+            die("Basic unit queries failed.\n");
+
+        printf("Min Pan: %0.2f deg\nMax Pan: %0.2f deg\n", pn * 0.02, px * 0.02);
+        printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", tn * 0.02, tx * 0.02);
+    }
+
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag,
                              position_method, eps, report_average, stage_update, update_time, cal_dist, save_video,
                              enable_stage, hfovx, hfovy, sep, 0, 0, pn, px, tn, tx,
@@ -151,7 +156,6 @@ int main(int argc, char *argv[]) {
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
-
     std::thread processor(processing_threads, cer, std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
