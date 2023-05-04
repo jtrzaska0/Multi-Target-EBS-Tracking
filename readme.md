@@ -62,7 +62,6 @@ directory. This program uses PTU-SDK version `2.0.4`.
 
 ## To Do:
 * Reimplement systematic errors
-* Reimplement speed/acceleration/boundaries in JSON
 
 ## References
 

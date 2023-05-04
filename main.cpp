@@ -59,8 +59,6 @@ int main(int argc, char *argv[]) {
     int update_time = stage_params.value("UPDATE_TIME", 100);
     bool report_average = params.value("REPORT_AVERAGE", false);
     const int history_size = params.value("HISTORY_SIZE", 12);
-    //double max_speed = params.value("MAX_SPEED", 0.6);
-    //double max_acc = params.value("MAX_ACCELERATION", 1);
     bool enable_filter = noise_params.value("ENABLE_FILTER", false);
     bool save_video = params.value("SAVE_VIDEO", false);
     std::string video_file = params.value("VIDEO_FILEPATH", "output.mp4");
@@ -75,6 +73,16 @@ int main(int argc, char *argv[]) {
     float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
     float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", -M_PI / 6);
     float end_tilt_angle = (float) stage_params.value("END_TILT_ANGLE", M_PI / 6);
+    int max_tilt_pos = params.value("MAX_TILT_POS", 1500);
+    int min_tilt_pos = params.value("MIN_TILT_POS", -1500);
+    int max_pan_pos = params.value("MAX_PAN_POS", 4500);
+    int min_pan_pos = params.value("MIN_PAN_POS", -4500);
+    int max_tilt_speed = params.value("MAX_TILT_SPEED", 6000);
+    int min_tilt_speed = params.value("MIN_TILT_SPEED", 0);
+    int max_pan_speed = params.value("MAX_PAN_SPEED", 6000);
+    int min_pan_speed = params.value("MIN_PAN_SPEED", 0);
+    int pan_acc = params.value("PAN_ACC", 6000);
+    int tilt_acc = params.value("TILT_ACC", 6000);
     Buffers buffers(history_size);
 
     /**Create an Algorithm object here.**/
@@ -128,7 +136,6 @@ int main(int argc, char *argv[]) {
 
     struct cerial *cer = nullptr;
     uint16_t status;
-    int pn{}, px{}, tn{}, tx{}, pu{}, tu{};
     if (enable_stage) {
         if ((cer = estrap_in(argc, argv)) == nullptr) {
             printf("Failed to connect to stage.\n");
@@ -138,21 +145,22 @@ int main(int argc, char *argv[]) {
         if (cpi_ptcmd(cer, &status, OP_FEEDBACK_SET, CPI_ASCII_FEEDBACK_TERSE))
             die("Failed to set feedback mode.\n");
 
-        // Get min/max positions and speed
-        if (cpi_ptcmd(cer, &status, OP_PAN_MAX_POSITION, &px) || cpi_ptcmd(cer, &status, OP_PAN_MIN_POSITION, &pn) ||
-            cpi_ptcmd(cer, &status, OP_TILT_MAX_POSITION, &tx) || cpi_ptcmd(cer, &status, OP_TILT_MIN_POSITION, &tn) ||
-            cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_GET, &pu) ||
-            cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_GET, &tu))
+        // Set min/max positions, speed, and acceleration
+        if (cpi_ptcmd(cer, &status, OP_PAN_USER_MAX_POS_SET, max_pan_pos) || cpi_ptcmd(cer, &status, OP_PAN_USER_MIN_POS_SET, min_pan_pos) ||
+            cpi_ptcmd(cer, &status, OP_TILT_USER_MAX_POS_SET, max_tilt_pos) || cpi_ptcmd(cer, &status, OP_TILT_USER_MIN_POS_SET, min_tilt_pos) ||
+            cpi_ptcmd(cer, &status, OP_TILT_LOWER_SPEED_LIMIT_SET, min_tilt_speed) || cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_SET, max_tilt_speed) ||
+            cpi_ptcmd(cer, &status, OP_PAN_LOWER_SPEED_LIMIT_SET, min_pan_speed) || cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_SET, max_pan_speed) ||
+            cpi_ptcmd(cer, &status, OP_PAN_ACCEL_SET, pan_acc) || cpi_ptcmd(cer, &status, OP_TILT_ACCEL_SET, tilt_acc))
             die("Basic unit queries failed.\n");
 
-        printf("Min Pan: %0.2f deg\nMax Pan: %0.2f deg\n", pn * 0.02, px * 0.02);
-        printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", tn * 0.02, tx * 0.02);
+        printf("Min Pan: %0.2f deg\nMax Pan: %0.2f deg\n", min_pan_pos * 0.02, max_pan_pos * 0.02);
+        printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", min_tilt_pos * 0.02, max_tilt_pos * 0.02);
     }
 
-    ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag,
-                             position_method, eps, report_average, stage_update, update_time, cal_dist, save_video,
-                             enable_stage, hfovx, hfovy, sep, 0, 0, pn, px, tn, tx,
-                             begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+    ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
+                             report_average, stage_update, update_time, cal_dist, save_video, enable_stage, hfovx, hfovy,
+                             sep, 0, 0, min_pan_pos, max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle,
+                             end_pan_angle, begin_tilt_angle, end_tilt_angle);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));

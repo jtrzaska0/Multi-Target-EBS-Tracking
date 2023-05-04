@@ -46,7 +46,16 @@
     "END_TILT_ANGLE": 0.5235988,
     "STAGE_UPDATE": 0.02,
     "UPDATE_TIME": 10,
-    "MAX_SPEED": 1,
+    "MIN_TILT_POS": -1500,
+    "MAX_TILT_POS": 1500,
+    "MIN_PAN_POS": -4500,
+    "MAX_PAN_POS": 4500,
+    "MIN_TILT_SPEED": 0,
+    "MAX_TILT_SPEED": 6000,
+    "MIN_PAN_SPEED": 0,
+    "MAX_PAN_SPEED": 6000,
+    "PAN_ACC": 6000,
+    "TILT_ACC": 6000,
     "MAX_ACCELERATION": 1
   }
 }
