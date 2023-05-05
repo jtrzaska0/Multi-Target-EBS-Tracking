@@ -157,10 +157,10 @@ int main(int argc, char *argv[]) {
     }
 
     double theta_prime_error{}, phi_prime_error{};
-    if (correction) {
+    if (correction && enable_stage) {
         std::thread driver(controller, cer, XK_C);
-        float pan_position;
-        float tilt_position;
+        int pan_position = 0;
+        int tilt_position = 0;
         double r;
         double x;
         double y;
@@ -183,9 +183,9 @@ int main(int argc, char *argv[]) {
 
         double phi = get_phi(x, Nx, hfovx);
         double theta = get_theta(y, Ny, hfovy);
-        theta = M_PI_2 - theta;
         double phi_prime_estimate = get_phi_prime(phi, theta, sep, r, 0);
         double theta_prime_estimate = get_theta_prime(phi, theta, sep, r, 0);
+        theta_prime_estimate = M_PI_2 - theta_prime_estimate;
         double phi_prime_actual = (double)pan_position * M_PI / 9000.0;
         double theta_prime_actual = (double)tilt_position * M_PI / 9000.0;
         phi_prime_error = (phi_prime_actual - phi_prime_estimate);
