@@ -95,8 +95,8 @@ int get_motor_position(int motor_begin, int motor_end, float ref_begin, float re
     Ret:
         motor_position: desired position in reference frame expressed as a motor position, bounded by the calibration
     */
-    float slope = (float)(motor_end - motor_begin) / (ref_end - ref_begin);
-    int target =  (int)(slope*(ref_target-ref_begin) + motor_begin);
+    float slope = (float) (motor_end - motor_begin) / (ref_end - ref_begin);
+    int target = (int) (slope * (ref_target - ref_begin) + motor_begin);
     return std::max(std::min(motor_end, target), motor_begin);
 }
 
@@ -138,7 +138,7 @@ void controller(struct cerial *cer, KeySym ks)
         const bool d_pressed = key_is_pressed(XK_D);
         const bool up_pressed = key_is_pressed(XK_Up);
         const bool down_pressed = key_is_pressed(XK_Down);
-        const float speed_p = (float)speed / 100;
+        const float speed_p = (float) speed / 100;
 
         int tilt_dir = 0;
         if (w_pressed)
@@ -147,7 +147,7 @@ void controller(struct cerial *cer, KeySym ks)
             tilt_dir = -1;
 
         if (prev_tilt_dir != tilt_dir) {
-            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_SPEED_SET, (int)((float)tilt_dir*(float)tilt_speed*speed_p));
+            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_SPEED_SET, (int) ((float) tilt_dir * (float) tilt_speed * speed_p));
             prev_tilt_dir = tilt_dir;
         }
 
@@ -158,7 +158,7 @@ void controller(struct cerial *cer, KeySym ks)
             pan_dir = -1;
 
         if (prev_pan_dir != pan_dir) {
-            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_SPEED_SET, (int)((float)pan_dir*(float)pan_speed*speed_p));
+            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_SPEED_SET, (int) ((float) pan_dir * (float) pan_speed * speed_p));
             prev_pan_dir = pan_dir;
         }
 

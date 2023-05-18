@@ -1,8 +1,10 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
+
 extern "C" {
 #include "ptu-sdk/examples/estrap.h"
 }
+
 #include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
 
@@ -52,7 +54,7 @@ int main(int argc, char *argv[]) {
     std::string position_method = params.value("COMMAND_METHOD", "median-history");
     double eps = params.value("EPSILON", 15);
     double mag = params.value("MAGNIFICATION", 0.05);
-    float cal_dist = (float)params.value("OBJECT_DIST", 999999.9);
+    float cal_dist = (float) params.value("OBJECT_DIST", 999999.9);
     bool enable_event_log = params.value("ENABLE_LOGGING", false);
     std::string event_file = params.value("EVENT_FILEPATH", "recording");
     double stage_update = stage_params.value("STAGE_UPDATE", 0.02);
@@ -145,10 +147,14 @@ int main(int argc, char *argv[]) {
             die("Failed to set feedback mode.\n");
 
         // Set min/max positions, speed, and acceleration
-        if (cpi_ptcmd(cer, &status, OP_PAN_USER_MAX_POS_SET, max_pan_pos) || cpi_ptcmd(cer, &status, OP_PAN_USER_MIN_POS_SET, min_pan_pos) ||
-            cpi_ptcmd(cer, &status, OP_TILT_USER_MAX_POS_SET, max_tilt_pos) || cpi_ptcmd(cer, &status, OP_TILT_USER_MIN_POS_SET, min_tilt_pos) ||
-            cpi_ptcmd(cer, &status, OP_TILT_LOWER_SPEED_LIMIT_SET, min_tilt_speed) || cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_SET, max_tilt_speed) ||
-            cpi_ptcmd(cer, &status, OP_PAN_LOWER_SPEED_LIMIT_SET, min_pan_speed) || cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_SET, max_pan_speed) ||
+        if (cpi_ptcmd(cer, &status, OP_PAN_USER_MAX_POS_SET, max_pan_pos) ||
+            cpi_ptcmd(cer, &status, OP_PAN_USER_MIN_POS_SET, min_pan_pos) ||
+            cpi_ptcmd(cer, &status, OP_TILT_USER_MAX_POS_SET, max_tilt_pos) ||
+            cpi_ptcmd(cer, &status, OP_TILT_USER_MIN_POS_SET, min_tilt_pos) ||
+            cpi_ptcmd(cer, &status, OP_TILT_LOWER_SPEED_LIMIT_SET, min_tilt_speed) ||
+            cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_SET, max_tilt_speed) ||
+            cpi_ptcmd(cer, &status, OP_PAN_LOWER_SPEED_LIMIT_SET, min_pan_speed) ||
+            cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_SET, max_pan_speed) ||
             cpi_ptcmd(cer, &status, OP_PAN_ACCEL_SET, pan_acc) || cpi_ptcmd(cer, &status, OP_TILT_ACCEL_SET, tilt_acc))
             die("Basic unit queries failed.\n");
 
@@ -186,8 +192,8 @@ int main(int argc, char *argv[]) {
         double phi_prime_estimate = get_phi_prime(phi, theta, sep, r, 0);
         double theta_prime_estimate = get_theta_prime(phi, theta, sep, r, 0);
         theta_prime_estimate = M_PI_2 - theta_prime_estimate;
-        double phi_prime_actual = (double)pan_position * M_PI / 9000.0;
-        double theta_prime_actual = (double)tilt_position * M_PI / 9000.0;
+        double phi_prime_actual = (double) pan_position * M_PI / 9000.0;
+        double theta_prime_actual = (double) tilt_position * M_PI / 9000.0;
         phi_prime_error = (phi_prime_actual - phi_prime_estimate);
         theta_prime_error = (theta_prime_actual - theta_prime_estimate);
         printf("Estimated theta_p/phi_p: (%.2f, %.2f)\n", theta_prime_estimate * 180 / M_PI, phi_prime_estimate * 180 / M_PI);
@@ -198,10 +204,11 @@ int main(int argc, char *argv[]) {
 
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
                              report_average, stage_update, update_time, cal_dist, save_video, enable_stage, hfovx, hfovy,
-                             sep, theta_prime_error, phi_prime_error, min_pan_pos, max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle,
-                             end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                             sep, theta_prime_error, phi_prime_error, min_pan_pos, max_pan_pos, min_tilt_pos, max_tilt_pos,
+                             begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
     cv::startWindowThread();
-    cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO | cv::WindowFlags::WINDOW_GUI_EXPANDED);
+    cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
+                                   cv::WindowFlags::WINDOW_GUI_EXPANDED);
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
     std::thread processor(processing_threads, cer, std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(active));
     if (device_type == "xplorer")

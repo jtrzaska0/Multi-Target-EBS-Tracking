@@ -401,11 +401,11 @@ StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::
             double theta_prime = get_theta_prime(phi, theta, proc_init.sep, proc_init.cal_dist, proc_init.theta_prime_error);
             double phi_prime = get_phi_prime(phi, theta, proc_init.sep, proc_init.cal_dist, proc_init.phi_prime_error);
             int pan_position = get_motor_position(proc_init.begin_pan, proc_init.end_pan,
-                                                    proc_init.begin_pan_angle, proc_init.end_pan_angle, phi_prime);
+                                                  proc_init.begin_pan_angle, proc_init.end_pan_angle, phi_prime);
             // Convert tilt to FLIR frame
             theta_prime = M_PI_2 - theta_prime;
             int tilt_position = get_motor_position(proc_init.begin_tilt, proc_init.end_tilt,
-                                                     proc_init.begin_tilt_angle, proc_init.end_tilt_angle, theta_prime);
+                                                   proc_init.begin_tilt_angle, proc_init.end_tilt_angle, theta_prime);
 
             bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, proc_init.update);
             if (timestamp_ms.count() > proc_init.update_time && move) {

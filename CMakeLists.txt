@@ -23,9 +23,9 @@ include_directories(${nlohmann_json_INCLUDE_DIR})
 link_directories(${nlohmann_json_LIBRARIES})
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
-if(OpenCV_VERSION VERSION_LESS "3.1.0")
+if (OpenCV_VERSION VERSION_LESS "3.1.0")
     message(FATAL_ERROR "Cannot find OpenCV 3.1.0 or newer.")
-endif()
+endif ()
 
 add_executable(LiveTracking main.cpp ptu-sdk/examples/estrap.o)
 target_link_libraries(LiveTracking PUBLIC

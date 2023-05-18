@@ -291,7 +291,8 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
     return (EXIT_SUCCESS);
 }
 
-void processing_threads(struct cerial *cer, Buffers &buffers, DBSCAN_KNN T, cv::VideoWriter &video, const ProcessingInit &proc_init, const bool &active) {
+void processing_threads(struct cerial *cer, Buffers &buffers, DBSCAN_KNN T, cv::VideoWriter &video,
+                        const ProcessingInit &proc_init, const bool &active) {
     auto start = std::chrono::high_resolution_clock::now();
     std::ofstream stageFile(proc_init.event_file + "-stage.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
