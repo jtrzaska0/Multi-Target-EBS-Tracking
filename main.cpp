@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
     std::string position_method = params.value("COMMAND_METHOD", "median-history");
     double eps = params.value("EPSILON", 15);
     double mag = params.value("MAGNIFICATION", 0.05);
-    float cal_dist = (float) params.value("OBJECT_DIST", 999999.9);
+    double r_center = stage_params.value("OBJECT_DIST", 999999.9);
     bool enable_event_log = params.value("ENABLE_LOGGING", false);
     std::string event_file = params.value("EVENT_FILEPATH", "recording");
     double stage_update = stage_params.value("STAGE_UPDATE", 0.02);
@@ -66,8 +66,11 @@ int main(int argc, char *argv[]) {
     std::string video_file = params.value("VIDEO_FILEPATH", "output.mp4");
     int video_fps = params.value("VIDEO_FPS", 30);
     double focal_len = stage_params.value("FOCAL_LENGTH", 0.006);
-    double sep = stage_params.value("SEPARATION", 0.15);
-    double dist = stage_params.value("DISTANCE", 10);
+    double offset_x = stage_params.value("OFFSET_X", 0.0);
+    double offset_y = stage_params.value("OFFSET_Y", 0.15);
+    double offset_z = stage_params.value("OFFSET_Z", 0.0);
+    double arm = stage_params.value("ARM_LENGTH", 0.2);
+    double dist = stage_params.value("FOCUS_DIST", 999999.9);
     double px_size = stage_params.value("PIXEL_SIZE", 0.000009);
     bool correction = stage_params.value("SYSTEMATIC_ERROR", false);
     float begin_pan_angle = (float) stage_params.value("START_PAN_ANGLE", -M_PI_2);
@@ -189,8 +192,8 @@ int main(int argc, char *argv[]) {
 
         double phi = get_phi(x, Nx, hfovx);
         double theta = get_theta(y, Ny, hfovy);
-        double phi_prime_estimate = get_phi_prime(phi, theta, sep, r, 0);
-        double theta_prime_estimate = get_theta_prime(phi, theta, sep, r, 0);
+        double phi_prime_estimate = get_phi_prime(phi, offset_x, offset_y, r_center, 0);
+        double theta_prime_estimate = get_theta_prime(phi, theta, offset_x, offset_y, offset_z, r, arm, 0);
         theta_prime_estimate = M_PI_2 - theta_prime_estimate;
         double phi_prime_actual = (double) pan_position * M_PI / 9000.0;
         double theta_prime_actual = (double) tilt_position * M_PI / 9000.0;
@@ -203,9 +206,9 @@ int main(int argc, char *argv[]) {
     }
 
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                             report_average, stage_update, update_time, cal_dist, save_video, enable_stage, hfovx, hfovy,
-                             sep, theta_prime_error, phi_prime_error, min_pan_pos, max_pan_pos, min_tilt_pos, max_tilt_pos,
-                             begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                             report_average, stage_update, update_time, r_center, save_video, enable_stage, hfovx, hfovy,
+                             offset_x, offset_y, offset_z, arm, theta_prime_error, phi_prime_error, min_pan_pos,
+                             max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                                    cv::WindowFlags::WINDOW_GUI_EXPANDED);

@@ -53,34 +53,44 @@ double get_theta(double y, int ny, double hfov) {
     return (M_PI / 2) - atan(2 * y * tan(hfov) / ny);
 }
 
-double get_phi_prime(double phi, double theta, double sep, double r, double error) {
+double get_phi_prime(double phi, double offset_x, double offset_y, double r_center, double error) {
     /*
     Get the azimuthal angle of an object in frame with respect to the stage
     Args:
         phi: azimuthal angle in radians with respect to camera
-        theta: polar angle in radians with respect to camera
-        sep: distance from camera to stage in meters
-        r: distance to object in meters
+        offset_x: distance along x-axis from camera to stage in meters
+        offset_y: distance along y-axis from camera to stage in meters
+        r_center: distance to object in meters when centered in camera
         error: systematic error of pan in radians
     Ret:
         phi_prime: azimuthal angle with respect to the stage
     */
-    return phi - (sep / r) * (cos(phi) / sin(theta)) + error;
+    double num = r_center*tan(phi) - offset_y;
+    double denom = r_center - offset_x;
+    return atan(num/denom) + error;
 }
 
-double get_theta_prime(double phi, double theta, double sep, double r, double error) {
+double get_theta_prime(double phi, double theta, double offset_x, double offset_y, double offset_z, double r_center, double arm, double error) {
     /*
     Get the polar angle of an object in frame with respect to the stage
     Args:
         phi: azimuthal angle in radians with respect to camera
         theta: polar angle in radians with respect to camera
-        sep: distance from camera to stage in meters
-        r: distance to object in meters
+        offset_x: distance along x-axis from camera to stage in meters
+        offset_y: distance along y-axis from camera to stage in meters
+        offset_z: distance along z-axis from camera to stage in meters
+        arm: length of stage arm in meters
+        r_center: distance to object in meters when centered in camera
         error: systematic error of tilt in radians
     Ret:
         theta_prime: polar angle with respect to the stage
     */
-    return theta - (sep / r) * cos(theta) * sin(phi) + error;
+    double num = r_center/tan(theta)/cos(phi) - offset_z;
+    double denom_1 = pow(offset_x, 2) + pow(offset_y, 2) + pow(offset_z, 2);
+    double denom_2 = pow(r_center, 2)/pow(sin(theta), 2)/pow(cos(phi), 2);
+    double denom_3 = 2*r_center*(offset_x + offset_y*tan(phi) + offset_z/tan(theta)/cos(phi));
+    double denom = sqrt(denom_1 + denom_2 - denom_3);
+    return acos(num/denom) + asin(arm*sin(theta)*cos(phi)/r_center) + error;
 }
 
 int get_motor_position(int motor_begin, int motor_end, float ref_begin, float ref_end, double ref_target) {

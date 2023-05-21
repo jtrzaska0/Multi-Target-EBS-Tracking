@@ -21,12 +21,15 @@ public:
     bool report_average;
     double update;
     int update_time;
-    float cal_dist;
+    double r_center;
     bool save_video;
     bool enable_stage;
     double hfovx;
     double hfovy;
-    double sep;
+    double offset_x;
+    double offset_y;
+    double offset_z;
+    double arm;
     double theta_prime_error;
     double phi_prime_error;
     int begin_pan;
@@ -40,10 +43,10 @@ public:
 
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
                    double mag, const std::string &position_method, double eps, bool report_average, double update,
-                   int update_time, float cal_dist, bool save_video, bool enable_stage, double hfovx, double hfovy,
-                   double sep, double theta_prime_error, double phi_prime_error, int begin_pan, int end_pan,
-                   int begin_tilt, int end_tilt, float begin_pan_angle, float end_pan_angle, float begin_tilt_angle,
-                   float end_tilt_angle) {
+                   int update_time, double r_center, bool save_video, bool enable_stage, double hfovx, double hfovy,
+                   double offset_x, double offset_y, double offset_z, double arm, double theta_prime_error,
+                   double phi_prime_error, int begin_pan, int end_pan, int begin_tilt, int end_tilt,
+                   float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle) {
         this->dt = dt;
         this->enable_tracking = enable_tracking;
         this->Nx = Nx;
@@ -56,12 +59,15 @@ public:
         this->report_average = report_average;
         this->update = update;
         this->update_time = update_time;
-        this->cal_dist = cal_dist;
+        this->r_center = r_center;
         this->save_video = save_video;
         this->enable_stage = enable_stage;
         this->hfovx = hfovx;
         this->hfovy = hfovy;
-        this->sep = sep;
+        this->offset_x = offset_x;
+        this->offset_y = offset_y;
+        this->offset_z = offset_z;
+        this->arm = arm;
         this->theta_prime_error = theta_prime_error;
         this->phi_prime_error = phi_prime_error;
         this->begin_pan = begin_pan;
@@ -398,8 +404,8 @@ StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::
 
             double theta = get_theta(y, proc_init.Ny, proc_init.hfovy);
             double phi = get_phi(x, proc_init.Nx, proc_init.hfovx);
-            double theta_prime = get_theta_prime(phi, theta, proc_init.sep, proc_init.cal_dist, proc_init.theta_prime_error);
-            double phi_prime = get_phi_prime(phi, theta, proc_init.sep, proc_init.cal_dist, proc_init.phi_prime_error);
+            double theta_prime = get_theta_prime(phi, theta, proc_init.offset_x, proc_init.offset_y, proc_init.offset_z, proc_init.r_center, proc_init.arm, proc_init.theta_prime_error);
+            double phi_prime = get_phi_prime(phi, proc_init.offset_x, proc_init.offset_y, proc_init.r_center, proc_init.phi_prime_error);
             int pan_position = get_motor_position(proc_init.begin_pan, proc_init.end_pan,
                                                   proc_init.begin_pan_angle, proc_init.end_pan_angle, phi_prime);
             // Convert tilt to FLIR frame
