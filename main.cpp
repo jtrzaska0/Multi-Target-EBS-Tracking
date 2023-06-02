@@ -12,15 +12,6 @@ extern "C" {
 
 using json = nlohmann::json;
 
-cv::Mat formatYolov5(const cv::Mat& frame) {
-    int row = frame.rows;
-    int col = frame.cols;
-    int _max = std::max(col, row);
-    cv::Mat result = cv::Mat::zeros(_max, _max, CV_8UC3);
-    frame.copyTo(result(cv::Rect(0, 0, col, row)));
-    return result;
-}
-
 int main(int argc, char *argv[]) {
     /*
 
@@ -52,7 +43,6 @@ int main(int argc, char *argv[]) {
     */
 
     std::string config_file = {std::string(argv[3])};
-    std::string onnx_loc = {std::string(argv[4])};
     std::ifstream f(config_file);
     json settings = json::parse(f);
     json params = settings["PROGRAM_PARAMETERS"];
