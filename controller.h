@@ -66,12 +66,19 @@ class StageController {
 public:
     StageController(double kp, double ki, double kd, int pan_max, int pan_min, int tilt_max, int tilt_min, struct cerial *cer):
             pan_ctrl(kp, ki, kd, pan_max, pan_min), active(true), pan_setpoint(0), tilt_setpoint(0),
-            tilt_ctrl(kp, ki, kd, tilt_max, tilt_min), cer(cer), status(0),
-            ctrl_thread(std::thread(&StageController::ctrl_loop, this)) {};
+            tilt_ctrl(kp, ki, kd, tilt_max, tilt_min), cer(cer), status(0) {
+        if (cer) {
+            ctrl_thread = std::thread(&StageController::ctrl_loop, this);
+        } else {
+            active = false;
+        }
+    };
 
     ~StageController() {
-        if (active)
-            this->shutdown();
+        if (active) {
+            active = false;
+            ctrl_thread.join();
+        }
     }
 
     void update_setpoints(int pan_target, int tilt_target) {
@@ -87,11 +94,6 @@ public:
         tilt_setpoint += tilt_inc;
         update_mtx.unlock();
     };
-
-    void shutdown() {
-        active = false;
-        ctrl_thread.join();
-    }
 
 private:
     PIDController pan_ctrl;
