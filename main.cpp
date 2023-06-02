@@ -5,11 +5,21 @@ extern "C" {
 #include "ptu-sdk/examples/estrap.h"
 }
 
+#include "stage-camera/StageCam.h"
 #include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
 #include "controller.h"
 
 using json = nlohmann::json;
+
+cv::Mat formatYolov5(const cv::Mat& frame) {
+    int row = frame.rows;
+    int col = frame.cols;
+    int _max = std::max(col, row);
+    cv::Mat result = cv::Mat::zeros(_max, _max, CV_8UC3);
+    frame.copyTo(result(cv::Rect(0, 0, col, row)));
+    return result;
+}
 
 int main(int argc, char *argv[]) {
     /*
@@ -42,6 +52,7 @@ int main(int argc, char *argv[]) {
     */
 
     std::string config_file = {std::string(argv[3])};
+    std::string onnx_loc = {std::string(argv[4])};
     std::ifstream f(config_file);
     json settings = json::parse(f);
     json params = settings["PROGRAM_PARAMETERS"];
@@ -206,6 +217,10 @@ int main(int argc, char *argv[]) {
         driver.join();
     }
     StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, cer);
+
+    int cam_width = 648;
+    int cam_height = 486;
+    StageCam stageCam(cam_width, cam_height);
 
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
                              report_average, stage_update, update_time, r_center, save_video, enable_stage, hfovx, hfovy,

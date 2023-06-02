@@ -2,10 +2,14 @@ cmake_minimum_required(VERSION 3.24)
 project(LiveTracking)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -DLITTLE_ENDIAN")
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/ptu-sdk)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/ptu-sdk/cerial)
+
+find_package(VimbaCPP REQUIRED)
+include_directories(${VimbaCPP_INCLUDE_DIRS})
 
 find_library(M_LIB m REQUIRED)
 find_library(CPI_LIB cpi REQUIRED PATHS ${CMAKE_CURRENT_SOURCE_DIR}/ptu-sdk)
@@ -30,6 +34,7 @@ endif ()
 add_executable(LiveTracking main.cpp ptu-sdk/examples/estrap.o)
 target_link_libraries(LiveTracking PUBLIC
         caer
+        ${VimbaCPP_LIBRARIES}
         ${CPI_LIB}
         ${M_LIB}
         ${nlohmann_json_LIBRARIES}

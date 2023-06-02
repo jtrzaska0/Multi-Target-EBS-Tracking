@@ -1050,6 +1050,9 @@ dkms.conf
 # EBS Tracking Repo
 Event-Sensor-Detection-and-Tracking/
 
+# Stage Camera Repo
+stage-camera/
+
 # FLIR PTU SDK
 ptu-sdk/
 
