@@ -211,6 +211,8 @@ int main(int argc, char *argv[]) {
     int cam_width = 648;
     int cam_height = 486;
     StageCam stageCam(cam_width, cam_height);
+    cv::namedWindow("Camera", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
+                              cv::WindowFlags::WINDOW_GUI_EXPANDED);
 
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
                              report_average, stage_update, update_time, r_center, save_video, enable_stage, hfovx, hfovy,
@@ -222,12 +224,15 @@ int main(int argc, char *argv[]) {
                                    cv::WindowFlags::WINDOW_GUI_EXPANDED);
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
     std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(active));
+    std::thread camera(camera_thread, std::ref(stageCam), std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
     else
         ret = read_davis(buffers, noise_params, enable_filter, active);
     processor.join();
+    camera.join();
+    ctrl.update_setpoints(0,0);
 
-    cv::destroyWindow("PLOT_EVENTS");
+    cv::destroyAllWindows();
     return ret;
 }

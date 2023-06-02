@@ -362,3 +362,12 @@ void processing_threads(StageController& ctrl, Buffers &buffers, DBSCAN_KNN T, c
     eventFile.close();
     video.release();
 }
+
+void camera_thread(StageCam& cam, const bool &active) {
+    while(active && cam.running()) {
+        auto frame = cam.get_frame();
+        cv::Mat color_frame;
+        cv::cvtColor(frame, color_frame, cv::COLOR_GRAY2BGR);
+        cv::imshow("Camera", color_frame);
+    }
+}
