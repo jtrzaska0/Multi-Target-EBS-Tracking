@@ -4,6 +4,7 @@
 #include <armadillo>
 #include <mlpack.hpp>
 #include <utility>
+#include "controller.h"
 
 using json = nlohmann::json;
 
@@ -391,7 +392,7 @@ WindowInfo process_packet(std::vector<double> events, DBSCAN_KNN T, const Proces
     return tracking_info;
 }
 
-StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::mat positions,
+StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arma::mat positions,
                      std::chrono::time_point<std::chrono::high_resolution_clock> last_start, int prev_pan,
                      int prev_tilt) {
     if (proc_init.enable_stage) {
@@ -421,9 +422,7 @@ StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::
                        proc_init.begin_tilt, proc_init.end_tilt);
                 printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
 
-                uint16_t status;
-                cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_position);
-                cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_position);
+                ctrl.update_setpoints(pan_position, tilt_position);
                 StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);
                 return info;
             }
@@ -434,7 +433,7 @@ StageInfo move_stage(struct cerial *cer, const ProcessingInit &proc_init, arma::
 }
 
 std::tuple<StageInfo, WindowInfo>
-read_future(struct cerial *cer, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
+read_future(StageController& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
             const StageInfo &prevStage,
             std::ofstream &stageFile, std::ofstream &eventFile, cv::VideoWriter &video) {
     const WindowInfo window_info = future.get();
@@ -443,7 +442,7 @@ read_future(struct cerial *cer, std::future<WindowInfo> &future, const Processin
     eventFile << window_info.event_info.event_string;
     if (proc_init.save_video)
         video.write(window_info.event_info.event_image);
-    StageInfo stage_info = move_stage(cer, proc_init, window_info.stage_positions, prevStage.end, prevStage.prev_pan,
+    StageInfo stage_info = move_stage(ctrl, proc_init, window_info.stage_positions, prevStage.end, prevStage.prev_pan,
                                       prevStage.prev_tilt);
     std::tuple<StageInfo, WindowInfo> ret = {stage_info, window_info};
     return ret;

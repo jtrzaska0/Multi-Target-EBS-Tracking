@@ -7,6 +7,7 @@ extern "C" {
 
 #include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
+#include "controller.h"
 
 using json = nlohmann::json;
 
@@ -204,16 +205,18 @@ int main(int argc, char *argv[]) {
         printf("Calibration complete. Press C to exit manual control.\n");
         driver.join();
     }
+    StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, cer);
 
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
                              report_average, stage_update, update_time, r_center, save_video, enable_stage, hfovx, hfovy,
                              offset_x, offset_y, offset_z, arm, theta_prime_error, phi_prime_error, min_pan_pos,
-                             max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle);
+                             max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle, end_pan_angle,
+                             begin_tilt_angle, end_tilt_angle);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                                    cv::WindowFlags::WINDOW_GUI_EXPANDED);
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
-    std::thread processor(processing_threads, cer, std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(active));
+    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
     else
