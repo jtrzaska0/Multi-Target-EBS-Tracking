@@ -75,6 +75,10 @@ public:
     };
 
     ~StageController() {
+        this->shutdown();
+    }
+
+    void shutdown() {
         if (active) {
             active = false;
             ctrl_thread.join();

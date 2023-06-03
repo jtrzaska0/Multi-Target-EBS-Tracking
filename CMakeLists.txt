@@ -26,7 +26,7 @@ find_package(nlohmann_json 3.11.2 REQUIRED)
 include_directories(${nlohmann_json_INCLUDE_DIR})
 link_directories(${nlohmann_json_LIBRARIES})
 
-find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
+find_package(OpenCV REQUIRED)
 if (OpenCV_VERSION VERSION_LESS "3.1.0")
     message(FATAL_ERROR "Cannot find OpenCV 3.1.0 or newer.")
 endif ()

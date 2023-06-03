@@ -43,6 +43,7 @@ int main(int argc, char *argv[]) {
     */
 
     std::string config_file = {std::string(argv[3])};
+    std::string onnx_loc = {std::string(argv[4])};
     std::ifstream f(config_file);
     json settings = json::parse(f);
     json params = settings["PROGRAM_PARAMETERS"];
@@ -89,6 +90,10 @@ int main(int argc, char *argv[]) {
     int min_pan_speed = params.value("MIN_PAN_SPEED", 0);
     int pan_acc = params.value("PAN_ACC", 6000);
     int tilt_acc = params.value("TILT_ACC", 6000);
+    double nfov_focal_len = stage_params.value("NFOV_FOCAL_LENGTH", 0.100);
+    int nfov_nx = stage_params.value("NFOV_NPX_HORIZ", 2592);
+    int nfov_ny = stage_params.value("NFOV_NPX_VERT", 1944);
+    double nfov_px_size = stage_params.value("NFOV_PX_PITCH", 0.0000022);
     Buffers buffers(history_size);
 
     /**Create an Algorithm object here.**/
@@ -208,8 +213,11 @@ int main(int argc, char *argv[]) {
     }
     StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, cer);
 
+    bool tracker_active = false;
     int cam_width = 648;
     int cam_height = 486;
+    double nfov_hfovx = get_hfov(nfov_focal_len, dist, nfov_nx, nfov_px_size);
+    double nfov_hfovy = get_hfov(nfov_focal_len, dist, nfov_ny, nfov_px_size);
     StageCam stageCam(cam_width, cam_height);
     cv::namedWindow("Camera", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                               cv::WindowFlags::WINDOW_GUI_EXPANDED);
@@ -223,15 +231,20 @@ int main(int argc, char *argv[]) {
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                                    cv::WindowFlags::WINDOW_GUI_EXPANDED);
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
-    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(active));
-    std::thread camera(camera_thread, std::ref(stageCam), std::ref(active));
+    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(tracker_active), std::ref(active));
+    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, std::ref(tracker_active), std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
     else
         ret = read_davis(buffers, noise_params, enable_filter, active);
+
     processor.join();
     camera.join();
-    ctrl.update_setpoints(0,0);
+    ctrl.shutdown();
+    cpi_ptcmd(cer, &status, OP_PAN_DESIRED_SPEED_SET, 9000);
+    cpi_ptcmd(cer, &status, OP_TILT_DESIRED_SPEED_SET, 9000);
+    cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, 0);
+    cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, 0);
 
     cv::destroyAllWindows();
     return ret;

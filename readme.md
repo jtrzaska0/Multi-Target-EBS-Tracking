@@ -67,7 +67,8 @@ want to enable it, you should adjust the appropriate setting in the JSON file bu
 terminal. In this case, the content of the first two arguments will not matter.
 
 ## To Do:
-* Incorporate NFOV tracking
+* Add nearness verification for NFOV tracking
+* Save stage positions when NFOV tracking is enabled
 
 ## References
 1. https://gist.github.com/Yousha/3830712334ac30a90eb6041b932b68d7
