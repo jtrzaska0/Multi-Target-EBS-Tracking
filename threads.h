@@ -374,7 +374,8 @@ cv::Mat formatYolov5(const cv::Mat& frame) {
     return result;
 }
 
-void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy, const std::string& onnx_loc, bool &tracker_active, const bool &active) {
+void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy, const std::string& onnx_loc,
+                   bool enable_stage, bool &tracker_active, const bool &active) {
     std::vector<std::string> class_list{"drone"};
     cv::dnn::Net net;
     net = cv::dnn::readNet(onnx_loc);
@@ -478,7 +479,8 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
                 int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
                 int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
-                ctrl.force_increment(pan_inc, tilt_inc);
+                if (enable_stage)
+                    ctrl.force_increment(pan_inc, tilt_inc);
                 tracker->init(color_frame, bbox);
             }
         }
@@ -490,7 +492,8 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
                 int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
                 int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
-                ctrl.force_increment(pan_inc, tilt_inc);
+                if (enable_stage)
+                    ctrl.force_increment(pan_inc, tilt_inc);
             }
             else {
                 tracker_active = false;
