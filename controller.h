@@ -161,6 +161,9 @@ private:
                 cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
                 cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_command);
             }
+            else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
         }
     }
 };
