@@ -422,7 +422,7 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
                        proc_init.begin_tilt, proc_init.end_tilt);
                 printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
                 if (!tracker_active) {
-                    ctrl.update_setpoints(pan_position, tilt_position);
+                    ctrl.force_setpoints(pan_position, tilt_position);
                 }
                 else {
                     pan_position = -9999;
