@@ -317,7 +317,7 @@ WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &ev
             if (proc_init.enable_event_log) {
                 positions_string += std::to_string(timestamp_ms.count()) + ",";
                 positions_string += std::to_string(x_stage) + ",";
-                positions_string += std::to_string(y_stage) + "\n";
+                positions_string += std::to_string(y_stage);
             }
         }
 
@@ -438,7 +438,11 @@ read_future(StageController& ctrl, std::future<WindowInfo> &future, const Proces
             const bool& tracker_active) {
     const WindowInfo window_info = future.get();
     update_window("PLOT_EVENTS", window_info.event_info.event_image);
-    detectionsFile << window_info.positions_string;
+    std::string track_mode(",Coarse\n");
+    if (tracker_active)
+        track_mode = ",Fine\n";
+    if (!window_info.positions_string.empty())
+        detectionsFile << window_info.positions_string + track_mode;
     eventFile << window_info.event_info.event_string;
     if (proc_init.save_video)
         video.write(window_info.event_info.event_image);
