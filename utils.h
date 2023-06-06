@@ -423,10 +423,6 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
                 if (!tracker_active) {
                     ctrl.force_setpoints(pan_position, tilt_position);
                 }
-                else {
-                    pan_position = -9999;
-                    tilt_position = -9999;
-                }
                 StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);
                 return info;
             }

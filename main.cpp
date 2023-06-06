@@ -197,7 +197,7 @@ int main(int argc, char *argv[]) {
         driver.join();
     }
     auto start_time = std::chrono::high_resolution_clock::now();
-    StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, cer);
+    StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer);
 
     bool tracker_active = false;
     int cam_width = 648;

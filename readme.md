@@ -68,7 +68,6 @@ terminal. In this case, the content of the first two arguments will not matter.
 
 ## To Do:
 * Add nearness verification for NFOV tracking
-* Save stage positions through controller class
 * Tune PID controllers for EBS input and camera input
 
 ## References
