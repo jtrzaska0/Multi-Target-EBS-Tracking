@@ -135,6 +135,15 @@ public:
         update_log(pan_pos + pan_inc, tilt_pos + tilt_inc);
     }
 
+    std::tuple<int, int> get_positions() {
+        int pan_pos;
+        int tilt_pos;
+        cpi_ptcmd(cer, &status, OP_PAN_CURRENT_POS_GET, &pan_pos);
+        cpi_ptcmd(cer, &status, OP_TILT_CURRENT_POS_GET, &tilt_pos);
+        std::tuple<int, int> ret = {pan_pos, tilt_pos};
+        return ret;
+    }
+
 private:
     PIDController pan_ctrl;
     PIDController tilt_ctrl;
