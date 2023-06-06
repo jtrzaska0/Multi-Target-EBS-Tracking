@@ -295,9 +295,9 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
 }
 
 void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, cv::VideoWriter& video,
-                        const ProcessingInit& proc_init, const bool& tracker_active, const bool& active) {
-    auto start = std::chrono::high_resolution_clock::now();
-    std::ofstream stageFile(proc_init.event_file + "-stage.csv");
+                        const ProcessingInit& proc_init, std::chrono::time_point<std::chrono::high_resolution_clock> start,
+                        const bool& tracker_active, const bool& active) {
+    std::ofstream detectionsFile(proc_init.event_file + "-detections.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
     std::binary_semaphore update_positions(1);
     WindowInfo prev_trackingInfo;
@@ -309,7 +309,7 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
             continue;
         std::future<WindowInfo> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
-                           prev_trackingInfo, &buffers.prev_positions, &update_positions);
+                           prev_trackingInfo, &buffers.prev_positions, &update_positions, start);
         buffers.PacketQueue.pop();
 
         fill_processorB:
@@ -319,13 +319,13 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, video, tracker_active);
+                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
             }
             goto fill_processorB;
         }
         std::future<WindowInfo> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
-                           prev_trackingInfo, &buffers.prev_positions, &update_positions);
+                           prev_trackingInfo, &buffers.prev_positions, &update_positions, start);
         buffers.PacketQueue.pop();
 
         fill_processorC:
@@ -335,32 +335,32 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, video, tracker_active);
+                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, stageFile, eventFile, video, tracker_active);
+                        read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
             }
             goto fill_processorC;
         }
         std::future<WindowInfo> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
-                           prev_trackingInfo, &buffers.prev_positions, &update_positions);
+                           prev_trackingInfo, &buffers.prev_positions, &update_positions, start);
         buffers.PacketQueue.pop();
 
         if (!A_processed) {
             std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, stageFile, eventFile, video, tracker_active);
+                    read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
         }
         if (!B_processed) {
             std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, stageFile, eventFile, video, tracker_active);
+                    read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
         }
         std::tie(prev_stageInfo, prev_trackingInfo) =
-                read_future(ctrl, fut_resultC, proc_init, prev_stageInfo, stageFile, eventFile, video, tracker_active);
+                read_future(ctrl, fut_resultC, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
     }
-    stageFile.close();
+    detectionsFile.close();
     eventFile.close();
     video.release();
 }

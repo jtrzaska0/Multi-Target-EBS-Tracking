@@ -196,6 +196,7 @@ int main(int argc, char *argv[]) {
         printf("Calibration complete. Press C to exit manual control.\n");
         driver.join();
     }
+    auto start_time = std::chrono::high_resolution_clock::now();
     StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, cer);
 
     bool tracker_active = false;
@@ -216,7 +217,7 @@ int main(int argc, char *argv[]) {
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                                    cv::WindowFlags::WINDOW_GUI_EXPANDED);
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
-    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(video), std::ref(proc_init), std::ref(tracker_active), std::ref(active));
+    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(video), std::ref(proc_init), start_time, std::ref(tracker_active), std::ref(active));
     std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
