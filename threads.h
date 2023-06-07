@@ -19,6 +19,7 @@
 #include "utils.h"
 #include "controller.h"
 #include "validator.h"
+#include "videos.h"
 
 using json = nlohmann::json;
 
@@ -375,8 +376,9 @@ cv::Mat formatYolov5(const cv::Mat& frame) {
     return result;
 }
 
-void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy, const std::string& onnx_loc,
-                   bool enable_stage, bool &tracker_active, Validator& validate, const bool &active) {
+void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy,
+                   const std::string& onnx_loc, bool enable_stage, bool &tracker_active, Validator& validate,
+                   std::chrono::time_point<std::chrono::high_resolution_clock> start, const bool &active) {
     std::vector<std::string> class_list{"drone"};
     cv::dnn::Net net;
     net = cv::dnn::readNet(onnx_loc);
@@ -507,6 +509,10 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 tracker = cv::TrackerKCF::create();
             }
         }
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        int elapsed = (int)duration.count();
+        saveImage(color_frame, "./camera_images", std::to_string(elapsed));
         cv::imshow("Camera", color_frame);
     }
 }

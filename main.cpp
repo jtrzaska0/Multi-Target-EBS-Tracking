@@ -1,5 +1,7 @@
+#include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <sys/stat.h>
 
 extern "C" {
 #include "ptu-sdk/examples/estrap.h"
@@ -10,8 +12,42 @@ extern "C" {
 #include "threads.h"
 #include "controller.h"
 #include "validator.h"
+#include "videos.h"
 
 using json = nlohmann::json;
+
+bool directoryExists(const std::string& folderPath) {
+    struct stat info{};
+    return stat(folderPath.c_str(), &info) == 0 && (info.st_mode & S_IFDIR);
+}
+
+bool deleteDirectory(const std::string& directoryPath) {
+    if (!std::filesystem::exists(directoryPath)) {
+        std::cerr << "Directory does not exist: " << directoryPath << std::endl;
+        return false;
+    }
+
+    try {
+        std::filesystem::remove_all(directoryPath);
+        std::cout << "Directory deleted: " << directoryPath << std::endl;
+        return true;
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "Failed to delete directory: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool makeDirectory(const std::string& directoryPath) {
+    if (directoryExists(directoryPath)) {
+        if (!deleteDirectory(directoryPath))
+            return false;
+    }
+    if (mkdir(directoryPath.c_str(), 0777) == -1) {
+        std::cerr << "Failed to create directory." << std::endl;
+        return false;
+    }
+    return true;
+}
 
 int main(int argc, char *argv[]) {
     /*
@@ -218,9 +254,13 @@ int main(int argc, char *argv[]) {
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                                    cv::WindowFlags::WINDOW_GUI_EXPANDED);
+
+    if (!makeDirectory("./event_images") || !makeDirectory("./camera_images"))
+        return -1;
+
     cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
     std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(video), std::ref(proc_init), start_time, std::ref(tracker_active), std::ref(validate), std::ref(active));
-    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), std::ref(validate), std::ref(active));
+    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), std::ref(validate), start_time, std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
     else
@@ -235,7 +275,8 @@ int main(int argc, char *argv[]) {
         cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, 0);
         cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, 0);
     }
-
+    printf("Processing videos...\n");
+    createVideoFromImages("./camera_images", "camera_output.mp4", 30.0);
     cv::destroyAllWindows();
     return ret;
 }

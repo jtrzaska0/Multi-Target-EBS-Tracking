@@ -20,7 +20,7 @@ public:
         coarse_tilt = tilt;
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        time_since_ebs_detection = duration.count();
+        time_since_ebs_detection = (double)duration.count();
         start = std::chrono::high_resolution_clock::now();
     }
 
@@ -29,9 +29,9 @@ public:
         fine_tilt = tilt;
     }
 
-    bool verify() {
-        double pan_error = abs(fine_pan - coarse_pan) / coarse_pan;
-        double tilt_error = abs(fine_tilt - coarse_tilt) / coarse_tilt;
+    [[nodiscard]] bool verify() const {
+        double pan_error = (double)abs(fine_pan - coarse_pan) / coarse_pan;
+        double tilt_error = (double)abs(fine_tilt - coarse_tilt) / coarse_tilt;
         if (pan_error < pos_thres && tilt_error < pos_thres && time_since_ebs_detection < time_thres)
             return true;
         return false;
