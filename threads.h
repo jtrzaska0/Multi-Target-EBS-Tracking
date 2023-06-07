@@ -484,9 +484,9 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                     ctrl.force_increment(pan_inc, tilt_inc);
                 auto [current_pan, current_tilt] = ctrl.get_positions();
                 validate.new_camera_detection(current_pan, current_tilt);
-                tracker_active = validate.verify();
-                if (tracker_active)
-                    tracker->init(color_frame, bbox);
+                validate.start_validator();
+                tracker_active = true;
+                tracker->init(color_frame, bbox);
             }
         } else {
             bool isTrackingSuccessful = tracker->update(color_frame, bbox);
@@ -500,7 +500,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                     ctrl.force_increment(pan_inc, tilt_inc);
                 auto [current_pan, current_tilt] = ctrl.get_positions();
                 validate.new_camera_detection(current_pan, current_tilt);
-                tracker_active = validate.verify();
+                tracker_active = validate.get_status();
                 if (!tracker_active)
                     tracker = cv::TrackerKCF::create();
             } else {

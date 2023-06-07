@@ -4,24 +4,19 @@
 
 class Validator {
 public:
-    Validator(double position_thres, double time_thres):
-            start(std::chrono::high_resolution_clock::now()) {
+    explicit Validator(double position_thres) {
         coarse_pan = 0;
         coarse_tilt = 0;
         fine_pan = 0;
         fine_tilt = 0;
         pos_thres = position_thres;
-        this->time_thres = time_thres;
-        time_since_ebs_detection = 0.0;
+        is_valid = false;
     };
 
     void new_ebs_detection(int pan, int tilt) {
         coarse_pan = pan;
         coarse_tilt = tilt;
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        time_since_ebs_detection = (double)duration.count();
-        start = std::chrono::high_resolution_clock::now();
+        is_valid = verify();
     }
 
     void new_camera_detection(int pan, int tilt) {
@@ -29,12 +24,12 @@ public:
         fine_tilt = tilt;
     }
 
-    [[nodiscard]] bool verify() const {
-        double pan_error = (double)abs(fine_pan - coarse_pan) / coarse_pan;
-        double tilt_error = (double)abs(fine_tilt - coarse_tilt) / coarse_tilt;
-        if (pan_error < pos_thres && tilt_error < pos_thres && time_since_ebs_detection < time_thres)
-            return true;
-        return false;
+    void start_validator() {
+        is_valid = true;
+    }
+
+    [[nodiscard]] bool get_status() const {
+        return is_valid;
     }
 
 private:
@@ -43,7 +38,13 @@ private:
     int fine_pan;
     int fine_tilt;
     double pos_thres;
-    double time_thres;
-    std::chrono::time_point<std::chrono::high_resolution_clock> start;
-    double time_since_ebs_detection;
+    bool is_valid;
+
+    [[nodiscard]] bool verify() const {
+        double pan_error = (double)abs(fine_pan - coarse_pan) / coarse_pan;
+        double tilt_error = (double)abs(fine_tilt - coarse_tilt) / coarse_tilt;
+        if (pan_error < pos_thres && tilt_error < pos_thres)
+            return true;
+        return false;
+    }
 };

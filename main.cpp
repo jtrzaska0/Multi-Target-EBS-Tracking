@@ -233,7 +233,7 @@ int main(int argc, char *argv[]) {
     }
     auto start_time = std::chrono::high_resolution_clock::now();
     StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer);
-    Validator validate(0.3, 500.0);
+    Validator validate(0.5);
 
     bool tracker_active = false;
     int cam_width = 648;
