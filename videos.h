@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <opencv2/opencv.hpp>
+#include "progressbar.h"
 
 void saveImage(const cv::Mat& frame, const std::string& folderPath, const std::string& fileName) {
     std::string filePath = folderPath + "/" + fileName + ".jpg";
@@ -64,6 +65,7 @@ void createVideoFromImages(const std::string& directoryPath, const std::string& 
     double ms_per_frame = 1000.0 / fps;
     double elapsed_time = first_time;
     cv::VideoWriter videoWriter(outputVideoPath, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), fps, frameSize);
+    progressbar bar((int)((last_time - first_time) / ms_per_frame) + 1);
 
     while (elapsed_time <= (double)last_time) {
         // Find the image with the filename closest to elapsed_time
@@ -90,9 +92,10 @@ void createVideoFromImages(const std::string& directoryPath, const std::string& 
                 std::cerr << "Failed to read image: " << closestImagePath << std::endl;
             }
         }
+        bar.update();
         elapsed_time += ms_per_frame;
     }
-
+    printf("\n");
     videoWriter.release();
     std::cout << "Video created: " << outputVideoPath << std::endl;
 }

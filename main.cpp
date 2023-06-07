@@ -273,8 +273,9 @@ int main(int argc, char *argv[]) {
         cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, 0);
     }
     cv::destroyAllWindows();
-    printf("Processing images into video...\n");
+    printf("Processing camera video...\n");
     createVideoFromImages("./camera_images", "camera_output.mp4", video_fps);
+    printf("Processing event video...\n");
     createVideoFromImages("./event_images", "ebs_output.mp4", video_fps);
     return ret;
 }
