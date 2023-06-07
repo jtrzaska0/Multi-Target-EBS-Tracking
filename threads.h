@@ -488,8 +488,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 if (tracker_active)
                     tracker->init(color_frame, bbox);
             }
-        }
-        else {
+        } else {
             bool isTrackingSuccessful = tracker->update(color_frame, bbox);
             if (isTrackingSuccessful) {
                 cv::rectangle(color_frame, bbox, cv::Scalar(255, 0, 0), 2);
@@ -502,8 +501,9 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 auto [current_pan, current_tilt] = ctrl.get_positions();
                 validate.new_camera_detection(current_pan, current_tilt);
                 tracker_active = validate.verify();
-            }
-            else {
+                if (!tracker_active)
+                    tracker = cv::TrackerKCF::create();
+            } else {
                 tracker_active = false;
                 tracker = cv::TrackerKCF::create();
             }

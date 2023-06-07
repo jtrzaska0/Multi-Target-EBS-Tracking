@@ -233,7 +233,7 @@ int main(int argc, char *argv[]) {
     }
     auto start_time = std::chrono::high_resolution_clock::now();
     StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer);
-    Validator validate(0.2, 100.0);
+    Validator validate(0.3, 500.0);
 
     bool tracker_active = false;
     int cam_width = 648;
@@ -272,9 +272,9 @@ int main(int argc, char *argv[]) {
         cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, 0);
         cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, 0);
     }
+    cv::destroyAllWindows();
     printf("Processing images into video...\n");
     createVideoFromImages("./camera_images", "camera_output.mp4", video_fps);
     createVideoFromImages("./event_images", "ebs_output.mp4", video_fps);
-    cv::destroyAllWindows();
     return ret;
 }
