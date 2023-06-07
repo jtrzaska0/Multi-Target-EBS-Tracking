@@ -481,10 +481,11 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
                 if (enable_stage)
                     ctrl.force_increment(pan_inc, tilt_inc);
-                tracker->init(color_frame, bbox);
                 auto [current_pan, current_tilt] = ctrl.get_positions();
                 validate.new_camera_detection(current_pan, current_tilt);
                 tracker_active = validate.verify();
+                if (tracker_active)
+                    tracker->init(color_frame, bbox);
             }
         }
         else {
