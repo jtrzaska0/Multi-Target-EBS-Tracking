@@ -8,7 +8,6 @@ void saveImage(const cv::Mat& frame, const std::string& folderPath, const std::s
     cv::imwrite(filePath, frame);
 }
 
-
 int extractFileNameAsInt(const std::string& filePath) {
     std::string fileName = std::filesystem::path(filePath).stem().string();
     try {
@@ -17,6 +16,23 @@ int extractFileNameAsInt(const std::string& filePath) {
         std::cerr << "Failed to convert file name to integer: " << e.what() << std::endl;
         return -1;
     }
+}
+
+std::pair<int, int> getMinMaxTimes(const std::vector<std::string>& file_paths) {
+    int min_file_name = std::numeric_limits<int>::max();
+    int max_file_name = std::numeric_limits<int>::min();
+
+    for (const std::string& file_path : file_paths) {
+        int file_name_as_int = extractFileNameAsInt(file_path);
+        min_file_name = std::min(min_file_name, file_name_as_int);
+        max_file_name = std::max(max_file_name, file_name_as_int);
+    }
+
+    if (min_file_name == std::numeric_limits<int>::max() || max_file_name == std::numeric_limits<int>::min()) {
+        return std::make_pair(-1, -1);
+    }
+
+    return std::make_pair(min_file_name, max_file_name);
 }
 
 void createVideoFromImages(const std::string& directoryPath, const std::string& outputVideoPath, double fps) {
@@ -41,8 +57,7 @@ void createVideoFromImages(const std::string& directoryPath, const std::string& 
         std::cerr << "Failed to read the first image." << std::endl;
         return;
     }
-    auto first_time = (double)extractFileNameAsInt(imagePaths[0]);
-    auto last_time = (double)extractFileNameAsInt(imagePaths[imagePaths.size() - 1]);
+    const auto [first_time, last_time] = getMinMaxTimes(imagePaths);
     if (first_time < 0 || last_time < 0)
         return;
 
@@ -50,7 +65,7 @@ void createVideoFromImages(const std::string& directoryPath, const std::string& 
     double elapsed_time = first_time;
     cv::VideoWriter videoWriter(outputVideoPath, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), fps, frameSize);
 
-    while (elapsed_time <= last_time) {
+    while (elapsed_time <= (double)last_time) {
         // Find the image with the filename closest to elapsed_time
         std::string closestImagePath;
         double closestDiff = std::numeric_limits<double>::max();
