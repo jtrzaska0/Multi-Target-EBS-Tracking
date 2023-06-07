@@ -90,7 +90,7 @@ double get_theta_prime(double phi, double theta, double offset_x, double offset_
     double denom_2 = pow(r_center, 2)/pow(sin(theta), 2)/pow(cos(phi), 2);
     double denom_3 = 2*r_center*(offset_x + offset_y*tan(phi) + offset_z/tan(theta)/cos(phi));
     double denom = sqrt(denom_1 + denom_2 - denom_3);
-    return acos(num/denom) + asin(arm*sin(theta)*cos(phi)/r_center) + error;
+    return acos(num/denom) + asin(arm*sin(theta)*cos(phi)/denom) + error;
 }
 
 int get_motor_position(int motor_begin, int motor_end, float ref_begin, float ref_end, double ref_target) {
