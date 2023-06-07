@@ -480,6 +480,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
                 int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
                 int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
+                ctrl.reset();
                 if (enable_stage)
                     ctrl.force_increment(pan_inc, tilt_inc);
                 tracker_active = true;
