@@ -11,7 +11,6 @@ extern "C" {
 #include "Event-Sensor-Detection-and-Tracking/Algorithm.hpp"
 #include "threads.h"
 #include "controller.h"
-#include "validator.h"
 #include "videos.h"
 
 using json = nlohmann::json;
@@ -234,7 +233,6 @@ int main(int argc, char *argv[]) {
     }
     auto start_time = std::chrono::high_resolution_clock::now();
     StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer);
-    Validator validate(0.5);
 
     bool tracker_active = false;
     int cam_width = 648;
@@ -257,8 +255,8 @@ int main(int argc, char *argv[]) {
     if (!makeDirectory("./event_images") || !makeDirectory("./camera_images"))
         return -1;
 
-    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(proc_init), start_time, std::ref(tracker_active), std::ref(validate), std::ref(active));
-    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), std::ref(validate), start_time, confidence_thres, std::ref(active));
+    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(proc_init), start_time, std::ref(tracker_active), std::ref(active));
+    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), start_time, confidence_thres, std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
     else
