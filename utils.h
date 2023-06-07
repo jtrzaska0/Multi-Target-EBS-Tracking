@@ -6,6 +6,7 @@
 #include <utility>
 #include "controller.h"
 #include "validator.h"
+#include "videos.h"
 
 using json = nlohmann::json;
 
@@ -24,7 +25,6 @@ public:
     double update;
     int update_time;
     double r_center;
-    bool save_video;
     bool enable_stage;
     double hfovx;
     double hfovy;
@@ -45,7 +45,7 @@ public:
 
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
                    double mag, const std::string &position_method, double eps, bool report_average, double update,
-                   int update_time, double r_center, bool save_video, bool enable_stage, double hfovx, double hfovy,
+                   int update_time, double r_center, bool enable_stage, double hfovx, double hfovy,
                    double offset_x, double offset_y, double offset_z, double arm, double theta_prime_error,
                    double phi_prime_error, int begin_pan, int end_pan, int begin_tilt, int end_tilt,
                    float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle) {
@@ -62,7 +62,6 @@ public:
         this->update = update;
         this->update_time = update_time;
         this->r_center = r_center;
-        this->save_video = save_video;
         this->enable_stage = enable_stage;
         this->hfovx = hfovx;
         this->hfovy = hfovy;
@@ -436,8 +435,8 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
 
 std::tuple<StageInfo, WindowInfo>
 read_future(StageController& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
-            const StageInfo &prevStage, std::ofstream &detectionsFile, std::ofstream &eventFile, cv::VideoWriter &video,
-            const bool& tracker_active, Validator& validate) {
+            const StageInfo &prevStage, std::ofstream &detectionsFile, std::ofstream &eventFile, Validator& validate,
+            const bool& tracker_active, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
     const WindowInfo window_info = future.get();
     update_window("PLOT_EVENTS", window_info.event_info.event_image);
     std::string track_mode(",Coarse\n");
@@ -446,8 +445,11 @@ read_future(StageController& ctrl, std::future<WindowInfo> &future, const Proces
     if (!window_info.positions_string.empty())
         detectionsFile << window_info.positions_string + track_mode;
     eventFile << window_info.event_info.event_string;
-    if (proc_init.save_video)
-        video.write(window_info.event_info.event_image);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    int elapsed = (int)duration.count();
+    if (!window_info.event_info.event_image.empty())
+        saveImage(window_info.event_info.event_image, "./event_images", std::to_string(elapsed));
     StageInfo stage_info = move_stage(ctrl, proc_init, window_info.stage_positions, prevStage.end, prevStage.prev_pan,
                                       prevStage.prev_tilt, tracker_active, validate);
     std::tuple<StageInfo, WindowInfo> ret = {stage_info, window_info};

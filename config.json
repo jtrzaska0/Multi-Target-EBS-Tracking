@@ -3,13 +3,11 @@
     "DEVICE_TYPE": "xplorer",
     "INTEGRATION_TIME_MS": 2,
     "ENABLE_TRACKING": true,
-    "COMMAND_METHOD": "median-history",
+    "COMMAND_METHOD": "median",
     "EPSILON": 50,
     "MAGNIFICATION": 0.0645,
     "ENABLE_LOGGING": false,
     "EVENT_FILEPATH": "data",
-    "SAVE_VIDEO": false,
-    "VIDEO_FILEPATH": "output.mp4",
     "VIDEO_FPS": 30,
     "REPORT_AVERAGE": false,
     "HISTORY_SIZE": 12
@@ -32,7 +30,7 @@
     "CAER_HOTPIXEL_LEARN": true
   },
   "STAGE_SETTINGS": {
-    "ENABLE_STAGE": false,
+    "ENABLE_STAGE": true,
     "FOCAL_LENGTH": 0.006,
     "OFFSET_X": 0.03,
     "OFFSET_Y": 0.13,

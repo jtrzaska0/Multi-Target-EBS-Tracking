@@ -102,8 +102,6 @@ int main(int argc, char *argv[]) {
     bool report_average = params.value("REPORT_AVERAGE", false);
     const int history_size = params.value("HISTORY_SIZE", 12);
     bool enable_filter = noise_params.value("ENABLE_FILTER", false);
-    bool save_video = params.value("SAVE_VIDEO", false);
-    std::string video_file = params.value("VIDEO_FILEPATH", "output.mp4");
     int video_fps = params.value("VIDEO_FPS", 30);
     double focal_len = stage_params.value("FOCAL_LENGTH", 0.006);
     double offset_x = stage_params.value("OFFSET_X", 0.0);
@@ -247,7 +245,7 @@ int main(int argc, char *argv[]) {
                               cv::WindowFlags::WINDOW_GUI_EXPANDED);
 
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                             report_average, stage_update, update_time, r_center, save_video, enable_stage, hfovx, hfovy,
+                             report_average, stage_update, update_time, r_center, enable_stage, hfovx, hfovy,
                              offset_x, offset_y, offset_z, arm, theta_prime_error, phi_prime_error, min_pan_pos,
                              max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle, end_pan_angle,
                              begin_tilt_angle, end_tilt_angle);
@@ -258,8 +256,7 @@ int main(int argc, char *argv[]) {
     if (!makeDirectory("./event_images") || !makeDirectory("./camera_images"))
         return -1;
 
-    cv::VideoWriter video(video_file, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), video_fps, cv::Size(Nx, Ny));
-    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(video), std::ref(proc_init), start_time, std::ref(tracker_active), std::ref(validate), std::ref(active));
+    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(proc_init), start_time, std::ref(tracker_active), std::ref(validate), std::ref(active));
     std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), std::ref(validate), start_time, std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
@@ -275,8 +272,9 @@ int main(int argc, char *argv[]) {
         cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, 0);
         cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, 0);
     }
-    printf("Processing videos...\n");
-    createVideoFromImages("./camera_images", "camera_output.mp4", 30.0);
+    printf("Processing images into video...\n");
+    createVideoFromImages("./camera_images", "camera_output.mp4", video_fps);
+    createVideoFromImages("./event_images", "ebs_output.mp4", video_fps);
     cv::destroyAllWindows();
     return ret;
 }
