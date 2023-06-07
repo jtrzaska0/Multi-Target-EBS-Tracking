@@ -377,7 +377,8 @@ cv::Mat formatYolov5(const cv::Mat& frame) {
 
 void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy,
                    const std::string& onnx_loc, bool enable_stage, bool &tracker_active, Validator& validate,
-                   std::chrono::time_point<std::chrono::high_resolution_clock> start, const bool &active) {
+                   std::chrono::time_point<std::chrono::high_resolution_clock> start, double confidence_thres,
+                   const bool &active) {
     std::vector<std::string> class_list{"drone"};
     cv::dnn::Net net;
     net = cv::dnn::readNet(onnx_loc);
@@ -409,7 +410,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
             for (int r = 0; r < output_data.rows; r++) {
                 cv::Mat row = output_data.row(r);
                 float confidence = row.at<float>(4);
-                if (confidence >= 0.4) {
+                if (confidence >= confidence_thres) {
                     cv::Mat classes_scores = row.colRange(5, row.cols);
                     cv::Point max_loc;
                     cv::minMaxLoc(classes_scores, nullptr, nullptr, nullptr, &max_loc);

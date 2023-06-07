@@ -10,7 +10,8 @@
     "EVENT_FILEPATH": "data",
     "VIDEO_FPS": 30,
     "REPORT_AVERAGE": false,
-    "HISTORY_SIZE": 12
+    "HISTORY_SIZE": 12,
+    "CONFIDENCE": 0.4
   },
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,

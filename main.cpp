@@ -115,20 +115,21 @@ int main(int argc, char *argv[]) {
     float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
     float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", -M_PI / 6);
     float end_tilt_angle = (float) stage_params.value("END_TILT_ANGLE", M_PI / 6);
-    int max_tilt_pos = params.value("MAX_TILT_POS", 1500);
-    int min_tilt_pos = params.value("MIN_TILT_POS", -1500);
-    int max_pan_pos = params.value("MAX_PAN_POS", 4500);
-    int min_pan_pos = params.value("MIN_PAN_POS", -4500);
-    int max_tilt_speed = params.value("MAX_TILT_SPEED", 6000);
-    int min_tilt_speed = params.value("MIN_TILT_SPEED", 0);
-    int max_pan_speed = params.value("MAX_PAN_SPEED", 6000);
-    int min_pan_speed = params.value("MIN_PAN_SPEED", 0);
-    int pan_acc = params.value("PAN_ACC", 6000);
-    int tilt_acc = params.value("TILT_ACC", 6000);
+    int max_tilt_pos = stage_params.value("MAX_TILT_POS", 1500);
+    int min_tilt_pos = stage_params.value("MIN_TILT_POS", -1500);
+    int max_pan_pos = stage_params.value("MAX_PAN_POS", 4500);
+    int min_pan_pos = stage_params.value("MIN_PAN_POS", -4500);
+    int max_tilt_speed = stage_params.value("MAX_TILT_SPEED", 6000);
+    int min_tilt_speed = stage_params.value("MIN_TILT_SPEED", 0);
+    int max_pan_speed = stage_params.value("MAX_PAN_SPEED", 6000);
+    int min_pan_speed = stage_params.value("MIN_PAN_SPEED", 0);
+    int pan_acc = stage_params.value("PAN_ACC", 6000);
+    int tilt_acc = stage_params.value("TILT_ACC", 6000);
     double nfov_focal_len = stage_params.value("NFOV_FOCAL_LENGTH", 0.100);
     int nfov_nx = stage_params.value("NFOV_NPX_HORIZ", 2592);
     int nfov_ny = stage_params.value("NFOV_NPX_VERT", 1944);
     double nfov_px_size = stage_params.value("NFOV_PX_PITCH", 0.0000022);
+    double confidence_thres = params.value("CONFIDENCE", 0.4);
     Buffers buffers(history_size);
 
     // DBSCAN
@@ -257,7 +258,7 @@ int main(int argc, char *argv[]) {
         return -1;
 
     std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(proc_init), start_time, std::ref(tracker_active), std::ref(validate), std::ref(active));
-    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), std::ref(validate), start_time, std::ref(active));
+    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), std::ref(validate), start_time, confidence_thres, std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
     else
