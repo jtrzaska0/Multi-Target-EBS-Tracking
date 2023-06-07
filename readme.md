@@ -52,8 +52,8 @@ want to enable it, you should adjust the appropriate setting in the JSON file bu
 terminal. In this case, the content of the first two arguments will not matter.
 
 ## To Do:
-* Add nearness verification for NFOV tracking
 * Tune PID controllers for EBS input and camera input
+* Tune video writer to make output real time
 
 ## References
 1. https://gist.github.com/Yousha/3830712334ac30a90eb6041b932b68d7

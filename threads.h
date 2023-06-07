@@ -18,6 +18,7 @@
 #include "pointing.h"
 #include "utils.h"
 #include "controller.h"
+#include "validator.h"
 
 using json = nlohmann::json;
 
@@ -296,7 +297,7 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
 
 void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, cv::VideoWriter& video,
                         const ProcessingInit& proc_init, std::chrono::time_point<std::chrono::high_resolution_clock> start,
-                        const bool& tracker_active, const bool& active) {
+                        const bool& tracker_active, Validator& validate, const bool& active) {
     std::ofstream detectionsFile(proc_init.event_file + "-detections.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
     std::binary_semaphore update_positions(1);
@@ -319,7 +320,7 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
+                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active, validate);
             }
             goto fill_processorB;
         }
@@ -335,12 +336,12 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
+                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active, validate);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
+                        read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active, validate);
             }
             goto fill_processorC;
         }
@@ -351,14 +352,14 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
 
         if (!A_processed) {
             std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
+                    read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active, validate);
         }
         if (!B_processed) {
             std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
+                    read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active, validate);
         }
         std::tie(prev_stageInfo, prev_trackingInfo) =
-                read_future(ctrl, fut_resultC, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active);
+                read_future(ctrl, fut_resultC, proc_init, prev_stageInfo, detectionsFile, eventFile, video, tracker_active, validate);
     }
     detectionsFile.close();
     eventFile.close();
@@ -375,7 +376,7 @@ cv::Mat formatYolov5(const cv::Mat& frame) {
 }
 
 void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy, const std::string& onnx_loc,
-                   bool enable_stage, bool &tracker_active, const bool &active) {
+                   bool enable_stage, bool &tracker_active, Validator& validate, const bool &active) {
     std::vector<std::string> class_list{"drone"};
     cv::dnn::Net net;
     net = cv::dnn::readNet(onnx_loc);
@@ -473,7 +474,6 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
             }
 
             if (!result_boxes.empty()) {
-                tracker_active = true;
                 bbox = result_boxes[0];
                 double target_x = (double) bbox.x + (bbox.width / 2.0) - (width / 2.0);
                 double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
@@ -482,6 +482,9 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 if (enable_stage)
                     ctrl.force_increment(pan_inc, tilt_inc);
                 tracker->init(color_frame, bbox);
+                auto [current_pan, current_tilt] = ctrl.get_positions();
+                validate.new_camera_detection(current_pan, current_tilt);
+                tracker_active = validate.verify();
             }
         }
         else {
@@ -494,6 +497,9 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
                 if (enable_stage)
                     ctrl.force_increment(pan_inc, tilt_inc);
+                auto [current_pan, current_tilt] = ctrl.get_positions();
+                validate.new_camera_detection(current_pan, current_tilt);
+                tracker_active = validate.verify();
             }
             else {
                 tracker_active = false;
