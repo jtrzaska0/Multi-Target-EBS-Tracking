@@ -129,6 +129,12 @@ int main(int argc, char *argv[]) {
     int nfov_ny = stage_params.value("NFOV_NPX_VERT", 1944);
     double nfov_px_size = stage_params.value("NFOV_PX_PITCH", 0.0000022);
     double confidence_thres = params.value("CONFIDENCE", 0.4);
+    double kp_fine = params.value("KP_FINE", 0.0);
+    double ki_fine = params.value("KI_FINE", 0.0);
+    double kd_fine = params.value("KD_FINE", 0.0);
+    double kp_coarse = params.value("KP_COARSE", 0.0);
+    double ki_coarse = params.value("KI_COARSE", 0.0);
+    double kd_coarse = params.value("KD_COARSE", 0.0);
     Buffers buffers(history_size);
 
     // DBSCAN
@@ -232,9 +238,8 @@ int main(int argc, char *argv[]) {
         driver.join();
     }
     auto start_time = std::chrono::high_resolution_clock::now();
-    StageController ctrl(0.5, 0.001, 0.001, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer);
+    StageController ctrl(kp_coarse, ki_coarse, kd_coarse, kp_fine, ki_fine, kd_fine, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer);
 
-    bool tracker_active = false;
     int cam_width = 648;
     int cam_height = 486;
     double nfov_hfovx = get_hfov(nfov_focal_len, dist, nfov_nx, nfov_px_size);
@@ -255,8 +260,8 @@ int main(int argc, char *argv[]) {
     if (!makeDirectory("./event_images") || !makeDirectory("./camera_images"))
         return -1;
 
-    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(proc_init), start_time, std::ref(tracker_active), std::ref(active));
-    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, std::ref(tracker_active), start_time, confidence_thres, std::ref(active));
+    std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(proc_init), start_time, std::ref(active));
+    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, start_time, confidence_thres, std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
     else

@@ -296,8 +296,7 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
 }
 
 void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, const ProcessingInit& proc_init,
-                        std::chrono::time_point<std::chrono::high_resolution_clock> start,
-                        const bool& tracker_active, const bool& active) {
+                        std::chrono::time_point<std::chrono::high_resolution_clock> start, const bool& active) {
     std::ofstream detectionsFile(proc_init.event_file + "-detections.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
     std::binary_semaphore update_positions(1);
@@ -320,7 +319,7 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, tracker_active, start);
+                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
             }
             goto fill_processorB;
         }
@@ -336,12 +335,12 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
             if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 A_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, tracker_active, start);
+                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
             }
             if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 B_processed = true;
                 std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, tracker_active, start);
+                        read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
             }
             goto fill_processorC;
         }
@@ -352,14 +351,14 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
 
         if (!A_processed) {
             std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, tracker_active, start);
+                    read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
         }
         if (!B_processed) {
             std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, tracker_active, start);
+                    read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
         }
         std::tie(prev_stageInfo, prev_trackingInfo) =
-                read_future(ctrl, fut_resultC, proc_init, prev_stageInfo, detectionsFile, eventFile, tracker_active, start);
+                read_future(ctrl, fut_resultC, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
     }
     detectionsFile.close();
     eventFile.close();
@@ -375,9 +374,8 @@ cv::Mat formatYolov5(const cv::Mat& frame) {
 }
 
 void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy,
-                   const std::string& onnx_loc, bool enable_stage, bool &tracker_active,
-                   std::chrono::time_point<std::chrono::high_resolution_clock> start, double confidence_thres,
-                   const bool &active) {
+                   const std::string& onnx_loc, bool enable_stage, std::chrono::time_point<std::chrono::high_resolution_clock> start,
+                   double confidence_thres, const bool &active) {
     std::vector<std::string> class_list{"drone"};
     cv::dnn::Net net;
     net = cv::dnn::readNet(onnx_loc);
@@ -388,7 +386,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
         cv::Mat color_frame;
         cv::cvtColor(frame, color_frame, cv::COLOR_GRAY2BGR);
         cv::Rect bbox;
-        if (!tracker_active) {
+        if (!ctrl.get_tracker_status()) {
             cv::Mat input_image = formatYolov5(color_frame);  // making the image square
             cv::Mat blob = cv::dnn::blobFromImage(input_image, 1 / 255.0, cv::Size(640, 640), true);
 
@@ -476,14 +474,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
 
             if (!result_boxes.empty()) {
                 bbox = result_boxes[0];
-                double target_x = (double) bbox.x + (bbox.width / 2.0) - (width / 2.0);
-                double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
-                int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
-                int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
-                ctrl.reset();
-                if (enable_stage)
-                    ctrl.force_increment(pan_inc, tilt_inc);
-                tracker_active = true;
+                ctrl.activate_fine();
                 tracker->init(color_frame, bbox);
             }
         } else {
@@ -497,7 +488,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 if (enable_stage)
                     ctrl.force_increment(pan_inc, tilt_inc);
             } else {
-                tracker_active = false;
+                ctrl.deactivate_fine();
                 tracker = cv::TrackerKCF::create();
             }
         }

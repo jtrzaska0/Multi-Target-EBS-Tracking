@@ -392,7 +392,7 @@ WindowInfo process_packet(std::vector<double> events, DBSCAN_KNN T, const Proces
 
 StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arma::mat positions,
                      std::chrono::time_point<std::chrono::high_resolution_clock> last_start, int prev_pan,
-                     int prev_tilt, const bool& tracker_active) {
+                     int prev_tilt) {
     if (proc_init.enable_stage) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> timestamp_ms = end - last_start;
@@ -414,14 +414,12 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
 
             bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, proc_init.update);
             if (timestamp_ms.count() > proc_init.update_time && move) {
-                printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI, phi_prime * 180 / M_PI);
-                printf("Stage Positions:\n     Pan: %d (%d, %d)\n     Tilt: %d (%d, %d)\n",
-                       pan_position, proc_init.begin_pan, proc_init.end_pan, tilt_position,
-                       proc_init.begin_tilt, proc_init.end_tilt);
-                printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
-                if (!tracker_active) {
-                    ctrl.force_setpoints(pan_position, tilt_position);
-                }
+                //printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI, phi_prime * 180 / M_PI);
+                //printf("Stage Positions:\n     Pan: %d (%d, %d)\n     Tilt: %d (%d, %d)\n",
+                //       pan_position, proc_init.begin_pan, proc_init.end_pan, tilt_position,
+                //       proc_init.begin_tilt, proc_init.end_tilt);
+                //printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
+                ctrl.force_setpoints(pan_position, tilt_position);
                 StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);
                 return info;
             }
@@ -434,14 +432,11 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
 std::tuple<StageInfo, WindowInfo>
 read_future(StageController& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
             const StageInfo &prevStage, std::ofstream &detectionsFile, std::ofstream &eventFile,
-            const bool& tracker_active, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
+            std::chrono::time_point<std::chrono::high_resolution_clock> start) {
     const WindowInfo window_info = future.get();
     update_window("PLOT_EVENTS", window_info.event_info.event_image);
-    std::string track_mode(",Coarse\n");
-    if (tracker_active)
-        track_mode = ",Fine\n";
     if (!window_info.positions_string.empty())
-        detectionsFile << window_info.positions_string + track_mode;
+        detectionsFile << window_info.positions_string + "\n";
     eventFile << window_info.event_info.event_string;
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -449,7 +444,7 @@ read_future(StageController& ctrl, std::future<WindowInfo> &future, const Proces
     if (!window_info.event_info.event_image.empty())
         saveImage(window_info.event_info.event_image, "./event_images", std::to_string(elapsed));
     StageInfo stage_info = move_stage(ctrl, proc_init, window_info.stage_positions, prevStage.end, prevStage.prev_pan,
-                                      prevStage.prev_tilt, tracker_active);
+                                      prevStage.prev_tilt);
     std::tuple<StageInfo, WindowInfo> ret = {stage_info, window_info};
     return ret;
 }
