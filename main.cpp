@@ -273,8 +273,8 @@ int main(int argc, char *argv[]) {
     if (cer) {
         cpi_ptcmd(cer, &status, OP_PAN_DESIRED_SPEED_SET, 9000);
         cpi_ptcmd(cer, &status, OP_TILT_DESIRED_SPEED_SET, 9000);
-        cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, 2250);
-        cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, 750);
+        cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, 0);
+        cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, 0);
     }
     cv::destroyAllWindows();
     printf("Processing camera video...\n");
