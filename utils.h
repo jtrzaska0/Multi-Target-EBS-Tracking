@@ -419,7 +419,7 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
                 //       pan_position, proc_init.begin_pan, proc_init.end_pan, tilt_position,
                 //       proc_init.begin_tilt, proc_init.end_tilt);
                 //printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
-                ctrl.force_setpoints(pan_position, tilt_position);
+                ctrl.update_setpoints(pan_position, tilt_position);
                 StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);
                 return info;
             }

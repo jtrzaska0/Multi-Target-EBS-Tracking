@@ -486,7 +486,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
                 int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
                 if (enable_stage)
-                    ctrl.force_increment(pan_inc, tilt_inc);
+                    ctrl.increment_setpoints(pan_inc, tilt_inc);
             } else {
                 ctrl.deactivate_fine();
                 tracker = cv::TrackerKCF::create();
