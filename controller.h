@@ -69,7 +69,7 @@ public:
                     std::chrono::time_point<std::chrono::high_resolution_clock> start, const std::string& event_file,
                     bool enable_logging, struct cerial *cer):
             pan_ctrl(kp_coarse, ki_coarse, kd_coarse, pan_max, pan_min), active(true), pan_setpoint(0), tilt_setpoint(0),
-            tilt_ctrl(kp_coarse, ki_coarse, kd_coarse, tilt_max, tilt_min), cer(cer), status(0), pid(true), stageFile(event_file + "-stage.csv"),
+            tilt_ctrl(kp_coarse, ki_coarse, kd_coarse, tilt_max, tilt_min), cer(cer), status(0), stageFile(event_file + "-stage.csv"),
             start(start), enable_logging(enable_logging), fine_active(false), last_pan(0), last_tilt(0) {
         this->kp_coarse = kp_coarse;
         this->ki_coarse = ki_coarse;
@@ -96,7 +96,6 @@ public:
     }
 
     void update_setpoints(int pan_target, int tilt_target) {
-        pid = true;
         if (!fine_active) {
             update_mtx.lock();
             pan_setpoint = pan_target;
@@ -106,7 +105,6 @@ public:
     };
 
     void increment_setpoints(int pan_inc, int tilt_inc) {
-        pid = true;
         if (fine_active) {
             update_mtx.lock();
             pan_setpoint = last_pan + pan_inc;
@@ -114,32 +112,6 @@ public:
             update_mtx.unlock();
         }
     };
-
-    void force_setpoints(int pan, int tilt) {
-        pid = false;
-        if (!fine_active) {
-            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt);
-            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan);
-            update_log(pan, tilt);
-            pan_setpoint = pan;
-            tilt_setpoint = tilt;
-        }
-    }
-
-    void force_increment(int pan_inc, int tilt_inc) {
-        pid = false;
-        if (fine_active) {
-            int pan_pos;
-            int tilt_pos;
-            cpi_ptcmd(cer, &status, OP_PAN_CURRENT_POS_GET, &pan_pos);
-            cpi_ptcmd(cer, &status, OP_TILT_CURRENT_POS_GET, &tilt_pos);
-            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_pos + tilt_inc);
-            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_pos + pan_inc);
-            update_log(pan_pos + pan_inc, tilt_pos + tilt_inc);
-            pan_setpoint = pan_pos + pan_inc;
-            tilt_setpoint = tilt_pos + tilt_inc;
-        }
-    }
 
     void activate_fine() {
         update_mtx.lock();
@@ -182,7 +154,6 @@ private:
     int last_pan;
     int last_tilt;
     uint16_t status;
-    bool pid;
     bool active;
     bool fine_active;
     std::ofstream stageFile;
@@ -210,22 +181,16 @@ private:
             cpi_ptcmd(cer, &status, OP_PAN_CURRENT_POS_GET, &last_pan);
             cpi_ptcmd(cer, &status, OP_TILT_CURRENT_POS_GET, &last_tilt);
             //printf("Pan: %d, Tilt: %d\n", last_pan, last_tilt);
-            if (pid) {
-                update_mtx.lock();
-                auto stop_time = std::chrono::high_resolution_clock::now();
-                auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
-                int pan_command = pan_ctrl.calculate(pan_setpoint, last_pan, (double) command_time);
-                int tilt_command = tilt_ctrl.calculate(tilt_setpoint, last_tilt, (double) command_time);
-                start_time = std::chrono::high_resolution_clock::now();
-                update_mtx.unlock();
-                cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
-                cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_command);
-                update_log(pan_command, tilt_command);
-            }
-            else {
-                start_time = std::chrono::high_resolution_clock::now();
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
+            update_mtx.lock();
+            auto stop_time = std::chrono::high_resolution_clock::now();
+            auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
+            int pan_command = pan_ctrl.calculate(pan_setpoint, last_pan, (double) command_time);
+            int tilt_command = tilt_ctrl.calculate(tilt_setpoint, last_tilt, (double) command_time);
+            start_time = std::chrono::high_resolution_clock::now();
+            update_mtx.unlock();
+            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
+            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_command);
+            update_log(pan_command, tilt_command);
         }
     }
 };
