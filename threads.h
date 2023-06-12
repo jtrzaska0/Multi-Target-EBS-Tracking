@@ -480,7 +480,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 }
             } else {
                 bool isTrackingSuccessful = tracker->update(color_frame, bbox);
-                if (isTrackingSuccessful) {
+                if (isTrackingSuccessful && !key_is_pressed(XK_Escape)) {
                     cv::rectangle(color_frame, bbox, cv::Scalar(255, 0, 0), 2);
                     double target_x = (double) bbox.x + (bbox.width / 2.0) - (width / 2.0);
                     double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
