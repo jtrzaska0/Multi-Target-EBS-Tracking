@@ -135,6 +135,7 @@ int main(int argc, char *argv[]) {
     double kp_coarse = params.value("KP_COARSE", 0.0);
     double ki_coarse = params.value("KI_COARSE", 0.0);
     double kd_coarse = params.value("KD_COARSE", 0.0);
+    bool enable_dnn = params.value("ENABLE_DNN", true);
     Buffers buffers(history_size);
 
     // DBSCAN
@@ -261,7 +262,7 @@ int main(int argc, char *argv[]) {
         return -1;
 
     std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(proc_init), start_time, std::ref(active));
-    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, start_time, confidence_thres, std::ref(active));
+    std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, enable_dnn, start_time, confidence_thres, std::ref(active));
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, noise_params, enable_filter, active);
     else

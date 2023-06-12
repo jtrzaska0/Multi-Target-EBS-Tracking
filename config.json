@@ -16,7 +16,8 @@
     "KD_COARSE": 0.002,
     "KP_FINE": 0.8,
     "KI_FINE": 0.005,
-    "KD_FINE": 0.008
+    "KD_FINE": 0.008,
+    "ENABLE_DNN": true
   },
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,

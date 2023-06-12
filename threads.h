@@ -374,7 +374,7 @@ cv::Mat formatYolov5(const cv::Mat& frame) {
 }
 
 void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy,
-                   const std::string& onnx_loc, bool enable_stage, std::chrono::time_point<std::chrono::high_resolution_clock> start,
+                   const std::string& onnx_loc, bool enable_stage, bool enable_dnn, std::chrono::time_point<std::chrono::high_resolution_clock> start,
                    double confidence_thres, const bool &active) {
     std::vector<std::string> class_list{"drone"};
     cv::dnn::Net net;
@@ -386,110 +386,112 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
         cv::Mat color_frame;
         cv::cvtColor(frame, color_frame, cv::COLOR_GRAY2BGR);
         cv::Rect bbox;
-        if (!ctrl.get_tracker_status()) {
-            cv::Mat input_image = formatYolov5(color_frame);  // making the image square
-            cv::Mat blob = cv::dnn::blobFromImage(input_image, 1 / 255.0, cv::Size(640, 640), true);
+        if (enable_dnn) {
+            if (!ctrl.get_tracker_status()) {
+                cv::Mat input_image = formatYolov5(color_frame);  // making the image square
+                cv::Mat blob = cv::dnn::blobFromImage(input_image, 1 / 255.0, cv::Size(640, 640), true);
 
-            net.setInput(blob);
-            cv::Mat predictions = net.forward();
+                net.setInput(blob);
+                cv::Mat predictions = net.forward();
 
-            std::vector<int> class_ids;
-            std::vector<float> confidences;
-            std::vector<cv::Rect> boxes;
+                std::vector<int> class_ids;
+                std::vector<float> confidences;
+                std::vector<cv::Rect> boxes;
 
-            cv::Mat output_data = predictions.reshape(0, predictions.size[1]);
+                cv::Mat output_data = predictions.reshape(0, predictions.size[1]);
 
-            int image_width = input_image.cols;
-            int image_height = input_image.rows;
-            float x_factor = static_cast<float>(image_width) / 640;
-            float y_factor = static_cast<float>(image_height) / 640;
+                int image_width = input_image.cols;
+                int image_height = input_image.rows;
+                float x_factor = static_cast<float>(image_width) / 640;
+                float y_factor = static_cast<float>(image_height) / 640;
 
-            for (int r = 0; r < output_data.rows; r++) {
-                cv::Mat row = output_data.row(r);
-                float confidence = row.at<float>(4);
-                if (confidence >= confidence_thres) {
-                    cv::Mat classes_scores = row.colRange(5, row.cols);
-                    cv::Point max_loc;
-                    cv::minMaxLoc(classes_scores, nullptr, nullptr, nullptr, &max_loc);
-                    int class_id = max_loc.y;
-                    if (classes_scores.at<float>(class_id) > 0.25) {
-                        confidences.push_back(confidence);
-                        class_ids.push_back(class_id);
+                for (int r = 0; r < output_data.rows; r++) {
+                    cv::Mat row = output_data.row(r);
+                    float confidence = row.at<float>(4);
+                    if (confidence >= confidence_thres) {
+                        cv::Mat classes_scores = row.colRange(5, row.cols);
+                        cv::Point max_loc;
+                        cv::minMaxLoc(classes_scores, nullptr, nullptr, nullptr, &max_loc);
+                        int class_id = max_loc.y;
+                        if (classes_scores.at<float>(class_id) > 0.25) {
+                            confidences.push_back(confidence);
+                            class_ids.push_back(class_id);
 
-                        float x = row.at<float>(0);
-                        float y = row.at<float>(1);
-                        float w = row.at<float>(2);
-                        float h = row.at<float>(3);
+                            float x = row.at<float>(0);
+                            float y = row.at<float>(1);
+                            float w = row.at<float>(2);
+                            float h = row.at<float>(3);
 
-                        int left = static_cast<int>((x - 0.5 * w) * x_factor);
-                        int top = static_cast<int>((y - 0.5 * h) * y_factor);
-                        int box_width = static_cast<int>(w * x_factor);
-                        int box_height = static_cast<int>(h * y_factor);
+                            int left = static_cast<int>((x - 0.5 * w) * x_factor);
+                            int top = static_cast<int>((y - 0.5 * h) * y_factor);
+                            int box_width = static_cast<int>(w * x_factor);
+                            int box_height = static_cast<int>(h * y_factor);
 
-                        cv::Rect box(left, top, box_width, box_height);
-                        boxes.push_back(box);
-                    }
-                }
-            }
-
-            std::vector<int> indexes;
-            cv::dnn::NMSBoxes(boxes, confidences, 0.25, 0.45, indexes);
-
-            std::vector<int> result_class_ids;
-            std::vector<float> result_confidences;
-            std::vector<cv::Rect> result_boxes;
-
-            if (indexes.size() >= 2) {
-                // Find the index of the box with the highest confidence
-                float max_confidence = confidences[indexes[0]];
-                int max_index = indexes[0];
-                for (int i = 1; i < indexes.size(); i++) {
-                    int index = indexes[i];
-                    float confidence = confidences[index];
-                    if (confidence > max_confidence) {
-                        max_confidence = confidence;
-                        max_index = index;
+                            cv::Rect box(left, top, box_width, box_height);
+                            boxes.push_back(box);
+                        }
                     }
                 }
 
-                // Swap the box with the highest confidence to the first position
-                std::swap(indexes[0], indexes[max_index]);
-            }
+                std::vector<int> indexes;
+                cv::dnn::NMSBoxes(boxes, confidences, 0.25, 0.45, indexes);
 
-            for (int i: indexes) {
-                result_confidences.push_back(confidences[i]);
-                result_class_ids.push_back(class_ids[i]);
-                result_boxes.push_back(boxes[i]);
-            }
+                std::vector<int> result_class_ids;
+                std::vector<float> result_confidences;
+                std::vector<cv::Rect> result_boxes;
 
-            for (size_t i = 0; i < result_class_ids.size(); i++) {
-                cv::Rect box = result_boxes[i];
+                if (indexes.size() >= 2) {
+                    // Find the index of the box with the highest confidence
+                    float max_confidence = confidences[indexes[0]];
+                    int max_index = indexes[0];
+                    for (int i = 1; i < indexes.size(); i++) {
+                        int index = indexes[i];
+                        float confidence = confidences[index];
+                        if (confidence > max_confidence) {
+                            max_confidence = confidence;
+                            max_index = index;
+                        }
+                    }
 
-                cv::rectangle(color_frame, box, cv::Scalar(0, 255, 255), 2);
-                cv::rectangle(color_frame, cv::Point(box.x, box.y - 20), cv::Point(box.x + box.width, box.y),
-                              cv::Scalar(0, 255, 255), -1);
-                cv::putText(color_frame, "drone", cv::Point(box.x, box.y - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5,
-                            cv::Scalar(0, 0, 0));
-            }
+                    // Swap the box with the highest confidence to the first position
+                    std::swap(indexes[0], indexes[max_index]);
+                }
 
-            if (!result_boxes.empty()) {
-                bbox = result_boxes[0];
-                ctrl.activate_fine();
-                tracker->init(color_frame, bbox);
-            }
-        } else {
-            bool isTrackingSuccessful = tracker->update(color_frame, bbox);
-            if (isTrackingSuccessful) {
-                cv::rectangle(color_frame, bbox, cv::Scalar(255, 0, 0), 2);
-                double target_x = (double) bbox.x + (bbox.width / 2.0) - (width / 2.0);
-                double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
-                int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
-                int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
-                if (enable_stage)
-                    ctrl.increment_setpoints(pan_inc, tilt_inc);
+                for (int i: indexes) {
+                    result_confidences.push_back(confidences[i]);
+                    result_class_ids.push_back(class_ids[i]);
+                    result_boxes.push_back(boxes[i]);
+                }
+
+                for (size_t i = 0; i < result_class_ids.size(); i++) {
+                    cv::Rect box = result_boxes[i];
+
+                    cv::rectangle(color_frame, box, cv::Scalar(0, 255, 255), 2);
+                    cv::rectangle(color_frame, cv::Point(box.x, box.y - 20), cv::Point(box.x + box.width, box.y),
+                                  cv::Scalar(0, 255, 255), -1);
+                    cv::putText(color_frame, "drone", cv::Point(box.x, box.y - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                                cv::Scalar(0, 0, 0));
+                }
+
+                if (!result_boxes.empty()) {
+                    bbox = result_boxes[0];
+                    ctrl.activate_fine();
+                    tracker->init(color_frame, bbox);
+                }
             } else {
-                ctrl.deactivate_fine();
-                tracker = cv::TrackerKCF::create();
+                bool isTrackingSuccessful = tracker->update(color_frame, bbox);
+                if (isTrackingSuccessful) {
+                    cv::rectangle(color_frame, bbox, cv::Scalar(255, 0, 0), 2);
+                    double target_x = (double) bbox.x + (bbox.width / 2.0) - (width / 2.0);
+                    double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
+                    int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
+                    int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
+                    if (enable_stage)
+                        ctrl.increment_setpoints(pan_inc, tilt_inc);
+                } else {
+                    ctrl.deactivate_fine();
+                    tracker = cv::TrackerKCF::create();
+                }
             }
         }
         auto end = std::chrono::high_resolution_clock::now();
