@@ -26,7 +26,7 @@ When the other dependencies are installed, you can build by running:
 
 ## Event Sensor Detection and Tracking
 To install the tracking algorithm, simply clone the Event Sensor Detection and Tracking repo into the working directory:
-1. `cd .../LiveTracking`
+1. `cd .../Live-EBS-Tracking`
 2. `gh repo clone I2SL/Event-Sensor-Detection-and-Tracking`
 
 ## FLIR PTU-SDK
@@ -39,7 +39,7 @@ directory. This program uses PTU-SDK version `2.0.4`.
 `mlpack` should be built and installed by following the instructions on the [GitHub page](https://github.com/mlpack/mlpack).
 
 ## OpenCV
-OpenCV should be installed by following the instructions on [their website.](https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html)
+OpenCV should be installed by following the instructions on [their website](https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html).
 It should be installed **with contributions**.
 
 ## libcaer
@@ -51,9 +51,10 @@ The program expects three arguments even when the stage is not in use. If the FL
 want to enable it, you should adjust the appropriate setting in the JSON file but still enter three arguments in the
 terminal. In this case, the content of the first two arguments will not matter.
 
-## To Do:
-* Tune PID controllers for EBS input and camera input
-* Add NFOV track verification
-
 ## References
 1. https://gist.github.com/Yousha/3830712334ac30a90eb6041b932b68d7
+2. https://gitlab.com/inivation/dv/libcaer
+3. https://docs.opencv.org/4.x/d7/d9f/tutorial_linux_install.html
+4. https://github.com/mlpack/mlpack
+5. https://docs.conan.io/2/installation.html
+6. https://github.com/gipert/progressbar
