@@ -11,13 +11,14 @@
     "VIDEO_FPS": 30,
     "REPORT_AVERAGE": false,
     "HISTORY_SIZE": 12,
-    "KP_COARSE": 0.75,
-    "KI_COARSE": 0.0022,
+    "KP_COARSE": 0.8,
+    "KI_COARSE": 0.002,
     "KD_COARSE": 0.002,
-    "KP_FINE": 0.8,
-    "KI_FINE": 0.005,
-    "KD_FINE": 0.008,
-    "ENABLE_DNN": true
+    "KP_FINE": 360.0,
+    "KI_FINE": 0.05,
+    "KD_FINE": 0.05,
+    "ENABLE_DNN": true,
+    "CONFIDENCE": 0.5
   },
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,
