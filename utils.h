@@ -133,6 +133,11 @@ public:
     }
 };
 
+Eigen::MatrixXd armaToEigen(const arma::mat& armaMatrix) {
+    Eigen::Map<const Eigen::MatrixXd> eigenMatrix(armaMatrix.memptr(), (long)armaMatrix.n_rows, (long)armaMatrix.n_cols);
+    return eigenMatrix;
+}
+
 double update_average(int prev_val, int new_val, int n_samples) {
     return (prev_val * n_samples + new_val) / ((double) n_samples + 1);
 }
@@ -158,13 +163,13 @@ arma::mat positions_vector_to_matrix(std::vector<double> positions) {
     return positions_mat;
 }
 
-void add_position_history(arma::mat *position_history, arma::mat positions, std::binary_semaphore *update_positions) {
+void add_position_history(arma::mat& position_history, arma::mat positions, std::binary_semaphore *update_positions) {
     //Shift columns to the right and populate first column with most recent position
     if (update_positions->try_acquire()) {
-        arma::mat ret = arma::shift(*position_history, +1, 1);
+        arma::mat ret = arma::shift(position_history, +1, 1);
         ret(0, 0) = positions(0, 0);
         ret(1, 0) = positions(1, 0);
-        *position_history = ret;
+        position_history = ret;
         update_positions->release();
     }
 }
@@ -227,7 +232,7 @@ arma::mat run_tracker(std::vector<double> events, double dt, DBSCAN_KNN T, bool 
     return positions_vector_to_matrix(positions);
 }
 
-arma::mat get_position(const std::string &method, const arma::mat &positions, arma::mat *previous_positions, double eps,
+arma::mat get_position(const std::string &method, arma::mat &positions, arma::mat &previous_positions, double eps,
                        std::binary_semaphore *update_positions) {
     arma::mat ret;
     if ((int) positions.n_cols > 0) {
@@ -238,7 +243,40 @@ arma::mat get_position(const std::string &method, const arma::mat &positions, ar
         if (method == "median-history") {
             arma::mat latest = arma::median(positions, 1);
             add_position_history(previous_positions, latest, update_positions);
-            ret = arma::mean(*previous_positions, 1);
+            ret = arma::mean(previous_positions, 1);
+            return ret;
+        }
+        if (method == "median-linearity") {
+            auto eigen_pos = armaToEigen(positions);
+            auto eigen_prev_pos = armaToEigen(previous_positions);
+            Eigen::VectorXd lastKnownPosition = eigen_prev_pos.col(0);
+            Eigen::MatrixXd distances = (eigen_pos.rowwise() - lastKnownPosition.transpose()).rowwise().squaredNorm();
+
+            int bestColumn = -1;
+            double bestRSquared = 0.0;
+            for (int col = 0; col < eigen_pos.cols(); ++col) {
+                // Extract the candidate point from the second matrix
+                Eigen::VectorXd candidatePoint = eigen_pos.col(col);
+
+                // Calculate the correlation coefficients with all previous points
+                Eigen::MatrixXd normalizedPrevPositions = eigen_prev_pos.rowwise().normalized();
+                Eigen::VectorXd correlations = normalizedPrevPositions * candidatePoint.normalized();
+
+                // Calculate the r^2 value
+                double rSquared = correlations.array().square().mean();
+
+                // Check if r^2 is greater than 0.4 and update the best column if necessary
+                if (rSquared > 0.4 && rSquared > bestRSquared) {
+                    bestColumn = col;
+                    bestRSquared = rSquared;
+                }
+            }
+
+            if (bestColumn >= 0)
+                return positions.col(bestColumn);
+
+            ret = arma::median(positions, 1);
+            add_position_history(previous_positions, ret, update_positions);
             return ret;
         }
         if (method == "dbscan") {
@@ -254,7 +292,7 @@ arma::mat get_position(const std::string &method, const arma::mat &positions, ar
 }
 
 WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &event_info, arma::mat positions,
-                            arma::mat *prev_positions, std::binary_semaphore *update_positions, int prev_x,
+                            arma::mat& prev_positions, std::binary_semaphore *update_positions, int prev_x,
                             int prev_y, int n_samples, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
     int y_increment = (int) (proc_init.mag * proc_init.Ny / 2);
     int x_increment = (int) (y_increment * proc_init.Nx / proc_init.Ny);
@@ -375,7 +413,7 @@ EventInfo read_packets(std::vector<double> events, int Nx, int Ny, bool enable_e
 // take a packet and run through the entire processing taskflow
 // return a cv mat for plotting and an arma mat for stage positions
 WindowInfo process_packet(std::vector<double> events, DBSCAN_KNN T, const ProcessingInit &proc_init,
-                          const WindowInfo &prev_window, arma::mat *prev_positions,
+                          const WindowInfo& prev_window, arma::mat& prev_positions,
                           std::binary_semaphore *update_positions, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
     cv::Mat event_image;
     arma::mat stage_positions;

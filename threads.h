@@ -322,7 +322,7 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
             continue;
         std::future<WindowInfo> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
-                           prev_trackingInfo, &buffers.prev_positions, &update_positions, start);
+                           prev_trackingInfo, std::ref(buffers.prev_positions), &update_positions, start);
         buffers.PacketQueue.pop();
 
         fill_processorB:
@@ -338,7 +338,7 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
         }
         std::future<WindowInfo> fut_resultB =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
-                           prev_trackingInfo, &buffers.prev_positions, &update_positions, start);
+                           prev_trackingInfo, std::ref(buffers.prev_positions), &update_positions, start);
         buffers.PacketQueue.pop();
 
         fill_processorC:
@@ -359,7 +359,7 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
         }
         std::future<WindowInfo> fut_resultC =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
-                           prev_trackingInfo, &buffers.prev_positions, &update_positions, start);
+                           prev_trackingInfo, std::ref(buffers.prev_positions), &update_positions, start);
         buffers.PacketQueue.pop();
 
         if (!A_processed) {
