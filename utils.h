@@ -253,7 +253,7 @@ arma::mat get_position(const std::string &method, arma::mat &positions, arma::ma
             Eigen::MatrixXd distances = (eigen_pos.rowwise() - lastKnownPosition.transpose()).rowwise().squaredNorm();
 
             int bestColumn = -1;
-            double bestRSquared = 0.0;
+            double bestDistance = std::numeric_limits<double>::max();  // Initialize with a large value
             for (int col = 0; col < eigen_pos.cols(); ++col) {
                 // Extract the candidate point from the second matrix
                 Eigen::VectorXd candidatePoint = eigen_pos.col(col);
@@ -265,10 +265,13 @@ arma::mat get_position(const std::string &method, arma::mat &positions, arma::ma
                 // Calculate the r^2 value
                 double rSquared = correlations.array().square().mean();
 
-                // Check if r^2 is greater than 0.4 and update the best column if necessary
-                if (rSquared > 0.4 && rSquared > bestRSquared) {
+                // Calculate the distance between the candidate point and the last known position
+                double distance = distances(col);
+
+                // Check if the distance is smaller, and r^2 is greater than 0.4
+                if (distance < bestDistance && rSquared > 0.4) {
                     bestColumn = col;
-                    bestRSquared = rSquared;
+                    bestDistance = distance;
                 }
             }
 
