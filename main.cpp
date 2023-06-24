@@ -136,6 +136,7 @@ int main(int argc, char *argv[]) {
     double ki_coarse = params.value("KI_COARSE", 0.0);
     double kd_coarse = params.value("KD_COARSE", 0.0);
     bool enable_dnn = params.value("ENABLE_DNN", true);
+    bool enable_pid = params.value("ENABLE_PID", true);
     Buffers buffers(history_size);
 
     // DBSCAN
@@ -239,7 +240,7 @@ int main(int argc, char *argv[]) {
         driver.join();
     }
     auto start_time = std::chrono::high_resolution_clock::now();
-    StageController ctrl(kp_coarse, ki_coarse, kd_coarse, kp_fine, ki_fine, kd_fine, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer);
+    StageController ctrl(kp_coarse, ki_coarse, kd_coarse, kp_fine, ki_fine, kd_fine, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer, enable_pid);
 
     int cam_width = 648;
     int cam_height = 486;

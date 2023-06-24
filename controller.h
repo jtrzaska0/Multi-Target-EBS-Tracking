@@ -67,10 +67,10 @@ public:
     StageController(double kp_coarse, double ki_coarse, double kd_coarse, double kp_fine, double ki_fine,
                     double kd_fine, int pan_max, int pan_min, int tilt_max, int tilt_min,
                     std::chrono::time_point<std::chrono::high_resolution_clock> start, const std::string& event_file,
-                    bool enable_logging, struct cerial *cer):
+                    bool enable_logging, struct cerial *cer, bool pid):
             pan_ctrl(kp_coarse, ki_coarse, kd_coarse, pan_max, pan_min), active(true), pan_setpoint(0), tilt_setpoint(0),
             tilt_ctrl(kp_coarse, ki_coarse, kd_coarse, tilt_max, tilt_min), cer(cer), status(0), stageFile(event_file + "-stage.csv"),
-            start(start), enable_logging(enable_logging), fine_active(false), last_pan(0), last_tilt(0) {
+            start(start), enable_logging(enable_logging), fine_active(false), last_pan(0), last_tilt(0), pid(pid) {
         this->kp_coarse = kp_coarse;
         this->ki_coarse = ki_coarse;
         this->kd_coarse = kd_coarse;
@@ -159,6 +159,7 @@ private:
     std::ofstream stageFile;
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
     bool enable_logging;
+    bool pid;
 
     void update_log(int pan, int tilt) {
         if (enable_logging) {
@@ -177,16 +178,25 @@ private:
 
     void ctrl_loop() {
         auto start_time = std::chrono::high_resolution_clock::now();
+        int pan_command;
+        int tilt_command;
         while(active) {
             cpi_ptcmd(cer, &status, OP_PAN_CURRENT_POS_GET, &last_pan);
             cpi_ptcmd(cer, &status, OP_TILT_CURRENT_POS_GET, &last_tilt);
             //printf("Pan: %d, Tilt: %d\n", last_pan, last_tilt);
             update_mtx.lock();
-            auto stop_time = std::chrono::high_resolution_clock::now();
-            auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
-            int pan_command = pan_ctrl.calculate(pan_setpoint, last_pan, (double) command_time);
-            int tilt_command = tilt_ctrl.calculate(tilt_setpoint, last_tilt, (double) command_time);
-            start_time = std::chrono::high_resolution_clock::now();
+            if (pid) {
+                auto stop_time = std::chrono::high_resolution_clock::now();
+                auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        stop_time - start_time).count();
+                pan_command = pan_ctrl.calculate(pan_setpoint, last_pan, (double) command_time);
+                tilt_command = tilt_ctrl.calculate(tilt_setpoint, last_tilt, (double) command_time);
+                start_time = std::chrono::high_resolution_clock::now();
+            }
+            else {
+                pan_command = pan_setpoint;
+                tilt_command = tilt_setpoint;
+            }
             update_mtx.unlock();
             cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
             cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_command);
