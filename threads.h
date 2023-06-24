@@ -48,9 +48,11 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter, bool &active) {
+int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter, const std::string& file, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
+    std::ofstream rateFile(file + "-rates.csv");
+    int packetcount = 0;
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
     shutdownAction.sa_flags = 0;
@@ -127,12 +129,14 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
         if (packetContainer == nullptr) {
             continue;
         }
+        int eventcount = 0;
         for (auto &packet: *packetContainer) {
             if (packet == nullptr) {
                 continue; // Skip if nothing there.
             }
 
             if (packet->getEventType() == POLARITY_EVENT) {
+                packetcount += 1;
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
@@ -140,6 +144,7 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
                     dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
+                    eventcount += 1;
                     // Discard invalid events (filtered out).
                     if (!e.isValid()) {
                         continue;
@@ -152,9 +157,11 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
                 }
             }
         }
+        rateFile << packetcount << "," << eventcount << "\n";
         buffers.PacketQueue.push(events);
     }
     handle.dataStop();
+    rateFile.close();
 
     // Close automatically done by destructor.
     printf("Shutdown successful.\n");
@@ -162,9 +169,11 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
     return (EXIT_SUCCESS);
 }
 
-int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, bool &active) {
+int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, const std::string& file, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
+    std::ofstream rateFile(file + "-rates.csv");
+    int packetcount = 0;
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
     shutdownAction.sa_flags = 0;
@@ -256,13 +265,14 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
         if (packetContainer == nullptr) {
             continue;
         }
-
+        int eventcount = 0;
         for (auto &packet: *packetContainer) {
             if (packet == nullptr) {
                 continue; // Skip if nothing there.
             }
 
             if (packet->getEventType() == POLARITY_EVENT) {
+                packetcount += 1;
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
@@ -270,6 +280,7 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
                     dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
+                    eventcount += 1;
                     // Discard invalid events (filtered out).
                     if (!e.isValid()) {
                         continue;
@@ -282,11 +293,13 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, b
                 }
             }
         }
+        rateFile << packetcount << "," << eventcount << "\n";
         buffers.PacketQueue.push(events);
         if (key_is_pressed(XK_space)) {
             active = false;
         }
     }
+    rateFile.close();
     davisHandle.dataStop();
 
     // Close automatically done by destructor.
