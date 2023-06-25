@@ -158,9 +158,9 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
             }
         }
         auto stop_processing = std::chrono::high_resolution_clock::now();
-        auto processing_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start_processing);
+        auto processing_duration = std::chrono::duration_cast<std::chrono::microseconds>(stop_processing - start_processing);
         auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start);
-        double eventRate = eventCount / (double)processing_duration.count();
+        double eventRate = 1000000 * eventCount / (double)processing_duration.count();
         rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
     }
