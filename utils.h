@@ -190,13 +190,32 @@ arma::mat get_dbscan_positions(const arma::mat &positions_mat, double eps) {
     arma::mat centroids;
     db.Cluster(positions_mat, assignments, centroids);
 
-    int n_clusters = (int) centroids.n_cols;
-    if (n_clusters > 0)
+    int n_clusters = (int)centroids.n_cols;
+    if (n_clusters > 0) {
+        // Calculate cluster sizes
+        arma::Col<size_t> clusterSizes(n_clusters, arma::fill::zeros);
+        for (size_t i = 0; i < assignments.n_elem; ++i) {
+            size_t clusterIndex = assignments[i];
+            if (clusterIndex < n_clusters) {
+                ++clusterSizes[clusterIndex];
+            }
+        }
+
+        // Find the cluster with the most points
+        size_t maxClusterIndex = clusterSizes.index_max();
+
+        // Swap the columns to move the cluster with most points to the first column
+        if (maxClusterIndex != 0) {
+            centroids.swap_cols(0, maxClusterIndex);
+        }
+
         return centroids;
+    }
 
     // If no clusters found, send matrix of unassigned positions
     return positions_mat;
 }
+
 
 arma::mat run_tracker(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking) {
     std::vector<double> positions;
