@@ -305,6 +305,34 @@ arma::mat get_position(const std::string &method, arma::mat &positions, arma::ma
             ret = get_dbscan_positions(positions, eps);
             return ret;
         }
+        if (method == "dbscan-history") {
+            arma::mat candidates = get_dbscan_positions(positions, eps);
+            double x = previous_positions(0, 0);
+            double y = previous_positions(1, 0);
+            double minDistance = std::numeric_limits<double>::max();
+            int closestIndex = -1;
+            // Iterate over the columns of candidates
+            for (size_t i = 0; i < candidates.n_cols; ++i) {
+                // Calculate the Euclidean distance between (x, y) and the current candidate
+                double dx = candidates(0, i) - x;
+                double dy = candidates(1, i) - y;
+                double distance = std::sqrt(dx * dx + dy * dy);
+
+                // Update the minimum distance and closest column index if necessary
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestIndex = static_cast<int>(i);
+                }
+            }
+            if (closestIndex >= 0) {
+                ret = candidates.col(closestIndex);
+            }
+            else {
+                ret = arma::median(candidates, 1);
+            }
+            add_position_history(previous_positions, ret, update_positions);
+            return ret;
+        }
         if (method == "kmeans") {
             ret = get_kmeans_positions(positions);
             return ret;
