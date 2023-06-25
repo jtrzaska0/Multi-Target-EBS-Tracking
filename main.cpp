@@ -265,9 +265,9 @@ int main(int argc, char *argv[]) {
     std::thread processor(processing_threads, std::ref(ctrl), std::ref(buffers), algo, std::ref(proc_init), start_time, std::ref(active));
     std::thread camera(camera_thread, std::ref(stageCam), std::ref(ctrl), cam_height, cam_width, nfov_hfovx, nfov_hfovy, onnx_loc, enable_stage, enable_dnn, start_time, confidence_thres, std::ref(active));
     if (device_type == "xplorer")
-        ret = read_xplorer(buffers, noise_params, enable_filter, event_file, active);
+        ret = read_xplorer(buffers, noise_params, enable_filter, event_file, start_time, active);
     else
-        ret = read_davis(buffers, noise_params, enable_filter, event_file, active);
+        ret = read_davis(buffers, noise_params, enable_filter, event_file, start_time, active);
 
     processor.join();
     camera.join();

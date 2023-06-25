@@ -48,11 +48,11 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter, const std::string& file, bool &active) {
+int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter, const std::string& file,
+                 std::chrono::time_point<std::chrono::high_resolution_clock> start, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
     std::ofstream rateFile(file + "-rates.csv");
-    int packetcount = 0;
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
     shutdownAction.sa_flags = 0;
@@ -129,14 +129,14 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
         if (packetContainer == nullptr) {
             continue;
         }
-        int eventcount = 0;
+        auto start_processing = std::chrono::high_resolution_clock::now();
+        int eventCount = 0;
         for (auto &packet: *packetContainer) {
             if (packet == nullptr) {
                 continue; // Skip if nothing there.
             }
 
             if (packet->getEventType() == POLARITY_EVENT) {
-                packetcount += 1;
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
@@ -144,7 +144,7 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
                     dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
-                    eventcount += 1;
+                    eventCount += 1;
                     // Discard invalid events (filtered out).
                     if (!e.isValid()) {
                         continue;
@@ -157,7 +157,11 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
                 }
             }
         }
-        rateFile << packetcount << "," << eventcount << "\n";
+        auto stop_processing = std::chrono::high_resolution_clock::now();
+        auto processing_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start_processing);
+        auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start);
+        double eventRate = eventCount / (double)processing_duration.count();
+        rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
     }
     handle.dataStop();
@@ -169,11 +173,11 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
     return (EXIT_SUCCESS);
 }
 
-int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, const std::string& file, bool &active) {
+int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, const std::string& file,
+               std::chrono::time_point<std::chrono::high_resolution_clock> start, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
     std::ofstream rateFile(file + "-rates.csv");
-    int packetcount = 0;
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
     shutdownAction.sa_flags = 0;
@@ -265,14 +269,14 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, c
         if (packetContainer == nullptr) {
             continue;
         }
-        int eventcount = 0;
+        auto start_processing = std::chrono::high_resolution_clock::now();
+        int eventCount = 0;
         for (auto &packet: *packetContainer) {
             if (packet == nullptr) {
                 continue; // Skip if nothing there.
             }
 
             if (packet->getEventType() == POLARITY_EVENT) {
-                packetcount += 1;
                 std::shared_ptr<libcaer::events::PolarityEventPacket> polarity
                         = std::static_pointer_cast<libcaer::events::PolarityEventPacket>(packet);
 
@@ -280,7 +284,7 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, c
                     dvsNoiseFilter.apply(*polarity);
 
                 for (const auto &e: *polarity) {
-                    eventcount += 1;
+                    eventCount += 1;
                     // Discard invalid events (filtered out).
                     if (!e.isValid()) {
                         continue;
@@ -293,7 +297,11 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, c
                 }
             }
         }
-        rateFile << packetcount << "," << eventcount << "\n";
+        auto stop_processing = std::chrono::high_resolution_clock::now();
+        auto processing_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start_processing);
+        auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start);
+        double eventRate = eventCount / (double)processing_duration.count();
+        rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
         if (key_is_pressed(XK_space)) {
             active = false;
