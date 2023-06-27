@@ -109,7 +109,6 @@ int main(int argc, char *argv[]) {
     double arm = stage_params.value("ARM_LENGTH", 0.2);
     double dist = stage_params.value("FOCUS_DIST", 999999.9);
     double px_size = stage_params.value("PIXEL_SIZE", 0.000009);
-    bool correction = stage_params.value("SYSTEMATIC_ERROR", false);
     float begin_pan_angle = (float) stage_params.value("START_PAN_ANGLE", -M_PI_2);
     float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
     float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", -M_PI / 6);
@@ -137,6 +136,8 @@ int main(int argc, char *argv[]) {
     double kd_coarse = params.value("KD_COARSE", 0.0);
     bool enable_dnn = params.value("ENABLE_DNN", true);
     bool enable_pid = params.value("ENABLE_PID", true);
+    double theta_prime_error = stage_params.value("TILT_ERROR", 0.0);
+    double phi_prime_error = stage_params.value("PAN_ERROR", 0.0);
     Buffers buffers(history_size);
 
     // DBSCAN
@@ -198,46 +199,6 @@ int main(int argc, char *argv[]) {
 
         printf("Min Pan: %0.2f deg\nMax Pan: %0.2f deg\n", min_pan_pos * 0.02, max_pan_pos * 0.02);
         printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", min_tilt_pos * 0.02, max_tilt_pos * 0.02);
-    }
-
-    double theta_prime_error{}, phi_prime_error{};
-    if (correction && enable_stage) {
-        std::thread driver(controller, cer, XK_C);
-        int pan_position = 0;
-        int tilt_position = 0;
-        double r;
-        double x;
-        double y;
-        printf("Center camera on known target and press `Q`.\n");
-        while (true) {
-            bool q_pressed = key_is_pressed(XK_Q);
-            if (q_pressed) {
-                cpi_ptcmd(cer, &status, OP_PAN_CURRENT_POS_GET, &pan_position);
-                cpi_ptcmd(cer, &status, OP_TILT_CURRENT_POS_GET, &tilt_position);
-                break;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        printf("Enter target distance (m):\n");
-        std::cin >> r;
-        printf("Enter target x coordinate:\n");
-        std::cin >> x;
-        printf("Enter target y coordinate:\n");
-        std::cin >> y;
-
-        double phi = get_phi(x, Nx, hfovx);
-        double theta = get_theta(y, Ny, hfovy);
-        double phi_prime_estimate = get_phi_prime(phi, offset_x, offset_y, r_center, 0);
-        double theta_prime_estimate = get_theta_prime(phi, theta, offset_x, offset_y, offset_z, r, arm, 0);
-        theta_prime_estimate = M_PI_2 - theta_prime_estimate;
-        double phi_prime_actual = (double) pan_position * M_PI / 9000.0;
-        double theta_prime_actual = (double) tilt_position * M_PI / 9000.0;
-        phi_prime_error = (phi_prime_actual - phi_prime_estimate);
-        theta_prime_error = (theta_prime_actual - theta_prime_estimate);
-        printf("Estimated theta_p/phi_p: (%.2f, %.2f)\n", theta_prime_estimate * 180 / M_PI, phi_prime_estimate * 180 / M_PI);
-        printf("Actual theta_p/phi_p: (%.2f, %.2f)\n", theta_prime_actual * 180 / M_PI, phi_prime_actual * 180 / M_PI);
-        printf("Calibration complete. Press C to exit manual control.\n");
-        driver.join();
     }
     auto start_time = std::chrono::high_resolution_clock::now();
     StageController ctrl(kp_coarse, ki_coarse, kd_coarse, kp_fine, ki_fine, kd_fine, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer, enable_pid);
