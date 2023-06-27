@@ -3,6 +3,7 @@
 #include <cmath>
 #include <thread>
 #include <chrono>
+#include "pointing.h"
 extern "C" {
 #include "ptu-sdk/examples/estrap.h"
 }
@@ -70,7 +71,8 @@ public:
                     bool enable_logging, struct cerial *cer, bool pid):
             pan_ctrl(kp_coarse, ki_coarse, kd_coarse, pan_max, pan_min), active(true), pan_setpoint(0), tilt_setpoint(0),
             tilt_ctrl(kp_coarse, ki_coarse, kd_coarse, tilt_max, tilt_min), cer(cer), status(0), stageFile(event_file + "-stage.csv"),
-            start(start), enable_logging(enable_logging), fine_active(false), last_pan(0), last_tilt(0), pid(pid) {
+            start(start), enable_logging(enable_logging), fine_active(false), last_pan(0), last_tilt(0), pid(pid),
+            pan_offset(0), tilt_offset(0) {
         this->kp_coarse = kp_coarse;
         this->ki_coarse = ki_coarse;
         this->kd_coarse = kd_coarse;
@@ -160,6 +162,8 @@ private:
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
     bool enable_logging;
     bool pid;
+    int pan_offset;
+    int tilt_offset;
 
     void update_log(int pan, int tilt) {
         if (enable_logging) {
@@ -184,18 +188,34 @@ private:
             cpi_ptcmd(cer, &status, OP_PAN_CURRENT_POS_GET, &last_pan);
             cpi_ptcmd(cer, &status, OP_TILT_CURRENT_POS_GET, &last_tilt);
             //printf("Pan: %d, Tilt: %d\n", last_pan, last_tilt);
+            if (key_is_pressed(XK_Up)) {
+                tilt_offset += 1;
+                printf("Tilt Offset: %d steps\n", tilt_offset);
+            }
+            if (key_is_pressed(XK_Down)) {
+                tilt_offset -= 1;
+                printf("Tilt Offset: %d steps\n", tilt_offset);
+            }
+            if (key_is_pressed(XK_Left)) {
+                pan_offset -= 1;
+                printf("Pan Offset: %d steps\n", pan_offset);
+            }
+            if (key_is_pressed(XK_Right)) {
+                pan_offset += 1;
+                printf("Pan Offset: %d steps\n", pan_offset);
+            }
             update_mtx.lock();
             if (pid) {
                 auto stop_time = std::chrono::high_resolution_clock::now();
                 auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                         stop_time - start_time).count();
-                pan_command = pan_ctrl.calculate(pan_setpoint, last_pan, (double) command_time);
-                tilt_command = tilt_ctrl.calculate(tilt_setpoint, last_tilt, (double) command_time);
+                pan_command = pan_ctrl.calculate(pan_setpoint + pan_offset, last_pan, (double) command_time);
+                tilt_command = tilt_ctrl.calculate(tilt_setpoint + tilt_offset, last_tilt, (double) command_time);
                 start_time = std::chrono::high_resolution_clock::now();
             }
             else {
-                pan_command = pan_setpoint;
-                tilt_command = tilt_setpoint;
+                pan_command = pan_setpoint + pan_offset;
+                tilt_command = tilt_setpoint + tilt_offset;
             }
             update_mtx.unlock();
             cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
