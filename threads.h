@@ -498,6 +498,12 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                     bbox = result_boxes[0];
                     ctrl.activate_fine();
                     tracker->init(color_frame, bbox);
+                    double target_x = (double) bbox.x + (bbox.width / 2.0) - (width / 2.0);
+                    double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
+                    int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
+                    int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
+                    if (enable_stage)
+                        ctrl.increment_setpoints(pan_inc, tilt_inc);
                 }
             } else {
                 bool isTrackingSuccessful = tracker->update(color_frame, bbox);
