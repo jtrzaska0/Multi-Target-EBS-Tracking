@@ -407,6 +407,13 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
         cv::Mat color_frame;
         cv::cvtColor(frame, color_frame, cv::COLOR_GRAY2BGR);
         cv::Rect bbox;
+        if (key_is_pressed(XK_E)) {
+            enable_dnn = !enable_dnn;
+            if (enable_dnn)
+                printf("Fine track enabled.\n");
+            else
+                printf("Fine track disabled.\n");
+        }
         if (enable_dnn) {
             if (!ctrl.get_tracker_status()) {
                 cv::Mat input_image = formatYolov5(color_frame);  // making the image square
