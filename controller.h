@@ -209,13 +209,25 @@ private:
                 auto stop_time = std::chrono::high_resolution_clock::now();
                 auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                         stop_time - start_time).count();
-                pan_command = pan_ctrl.calculate(pan_setpoint + pan_offset, last_pan, (double) command_time);
-                tilt_command = tilt_ctrl.calculate(tilt_setpoint + tilt_offset, last_tilt, (double) command_time);
+                if (!fine_active) {
+                    pan_command = pan_ctrl.calculate(pan_setpoint + pan_offset, last_pan, (double) command_time);
+                    tilt_command = tilt_ctrl.calculate(tilt_setpoint + tilt_offset, last_tilt, (double) command_time);
+                }
+                else {
+                    pan_command = pan_ctrl.calculate(pan_setpoint, last_pan, (double) command_time);
+                    tilt_command = tilt_ctrl.calculate(tilt_setpoint, last_tilt, (double) command_time);
+                }
                 start_time = std::chrono::high_resolution_clock::now();
             }
             else {
-                pan_command = pan_setpoint + pan_offset;
-                tilt_command = tilt_setpoint + tilt_offset;
+                if (!fine_active) {
+                    pan_command = pan_setpoint + pan_offset;
+                    tilt_command = tilt_setpoint + tilt_offset;
+                }
+                else {
+                    pan_command = pan_setpoint;
+                    tilt_command = tilt_setpoint;
+                }
             }
             update_mtx.unlock();
             cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
