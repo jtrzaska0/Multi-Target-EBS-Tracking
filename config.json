@@ -22,7 +22,8 @@
     "ENABLE_PID": false,
     "EBS_EPSILON": 12,
     "EBS_NUM_PTS": 3,
-    "EBS_TAU": 1.2
+    "EBS_TAU": 1.2,
+    "VERBOSE": false
   },
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,

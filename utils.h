@@ -41,13 +41,14 @@ public:
     float end_pan_angle;
     float begin_tilt_angle;
     float end_tilt_angle;
+    bool verbose;
 
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
                    double mag, const std::string &position_method, double eps, bool report_average, double update,
                    int update_time, double r_center, bool enable_stage, double hfovx, double hfovy, double offset_x,
                    double offset_y, double offset_z, double arm, int pan_offset, int tilt_offset, int begin_pan,
                    int end_pan, int begin_tilt, int end_tilt, float begin_pan_angle, float end_pan_angle,
-                   float begin_tilt_angle, float end_tilt_angle) {
+                   float begin_tilt_angle, float end_tilt_angle, bool verbose) {
         this->dt = dt;
         this->enable_tracking = enable_tracking;
         this->Nx = Nx;
@@ -78,6 +79,7 @@ public:
         this->end_pan_angle = end_pan_angle;
         this->begin_tilt_angle = begin_tilt_angle;
         this->end_tilt_angle = end_tilt_angle;
+        this->verbose = verbose;
     }
 };
 
@@ -408,22 +410,24 @@ WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &ev
             }
         }
 
-        cv::putText(event_info.event_image,
-                    std::string("Objects: ") + std::to_string((int) (stage_positions.size() / 2)), //text
-                    cv::Point((int) (0.05 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
-                    cv::FONT_HERSHEY_DUPLEX,
-                    0.5,
-                    CV_RGB(118, 185, 0),
-                    2);
+        if (proc_init.verbose) {
+            cv::putText(event_info.event_image,
+                        std::string("Objects: ") + std::to_string((int) (stage_positions.size() / 2)), //text
+                        cv::Point((int) (0.05 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
+                        cv::FONT_HERSHEY_DUPLEX,
+                        0.5,
+                        CV_RGB(118, 185, 0),
+                        2);
 
-        cv::putText(event_info.event_image,
-                    std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) +
-                    std::string(")"), //text
-                    cv::Point((int) (0.80 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
-                    cv::FONT_HERSHEY_DUPLEX,
-                    0.5,
-                    CV_RGB(118, 185, 0),
-                    2);
+            cv::putText(event_info.event_image,
+                        std::string("(") + std::to_string(first_x) + std::string(", ") + std::to_string(first_y) +
+                        std::string(")"), //text
+                        cv::Point((int) (0.80 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
+                        cv::FONT_HERSHEY_DUPLEX,
+                        0.5,
+                        CV_RGB(118, 185, 0),
+                        2);
+        }
     }
     WindowInfo info(event_info, stage_positions, positions_string, prev_x, prev_y, n_samples);
     return info;

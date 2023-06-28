@@ -140,6 +140,7 @@ int main(int argc, char *argv[]) {
     double ebs_eps = params.value("EBS_EPSILON", 8.0);
     int ebs_num_pts = params.value("EBS_NUM_PTS", 8);
     double ebs_tau = params.value("EBS_TAU", 1.2);
+    bool verbose = params.value("VERBOSE", false);
     Buffers buffers(history_size);
 
     // DBSCAN
@@ -232,7 +233,7 @@ int main(int argc, char *argv[]) {
                              report_average, stage_update, update_time, r_center, enable_stage, hfovx, hfovy,
                              offset_x, offset_y, offset_z, arm, pan_offset, tilt_offset, min_pan_pos,
                              max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle, end_pan_angle,
-                             begin_tilt_angle, end_tilt_angle);
+                             begin_tilt_angle, end_tilt_angle, verbose);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                                    cv::WindowFlags::WINDOW_GUI_EXPANDED);
