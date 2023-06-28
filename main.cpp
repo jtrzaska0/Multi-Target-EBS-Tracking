@@ -136,8 +136,8 @@ int main(int argc, char *argv[]) {
     double kd_coarse = params.value("KD_COARSE", 0.0);
     bool enable_dnn = params.value("ENABLE_DNN", true);
     bool enable_pid = params.value("ENABLE_PID", true);
-    double theta_prime_error = stage_params.value("TILT_ERROR", 0.0);
-    double phi_prime_error = stage_params.value("PAN_ERROR", 0.0);
+    int tilt_offset = stage_params.value("TILT_OFFSET", 0);
+    int pan_offset = stage_params.value("PAN_OFFSET", 0);
     double ebs_eps = params.value("EBS_EPSILON", 8.0);
     int ebs_num_pts = params.value("EBS_NUM_PTS", 8);
     double ebs_tau = params.value("EBS_TAU", 1.2);
@@ -216,7 +216,7 @@ int main(int argc, char *argv[]) {
 
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
                              report_average, stage_update, update_time, r_center, enable_stage, hfovx, hfovy,
-                             offset_x, offset_y, offset_z, arm, theta_prime_error, phi_prime_error, min_pan_pos,
+                             offset_x, offset_y, offset_z, arm, pan_offset, tilt_offset, min_pan_pos,
                              max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle, end_pan_angle,
                              begin_tilt_angle, end_tilt_angle);
     cv::startWindowThread();

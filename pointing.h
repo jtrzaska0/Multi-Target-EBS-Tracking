@@ -53,7 +53,7 @@ double get_theta(double y, int ny, double hfov) {
     return (M_PI / 2) - atan(2 * y * tan(hfov) / ny);
 }
 
-double get_phi_prime(double phi, double offset_x, double offset_y, double r_center, double error) {
+double get_phi_prime(double phi, double offset_x, double offset_y, double r_center) {
     /*
     Get the azimuthal angle of an object in frame with respect to the stage
     Args:
@@ -67,10 +67,10 @@ double get_phi_prime(double phi, double offset_x, double offset_y, double r_cent
     */
     double num = r_center*tan(phi) - offset_y;
     double denom = r_center - offset_x;
-    return atan(num/denom) + error;
+    return atan(num/denom);
 }
 
-double get_theta_prime(double phi, double theta, double offset_x, double offset_y, double offset_z, double r_center, double arm, double error) {
+double get_theta_prime(double phi, double theta, double offset_x, double offset_y, double offset_z, double r_center, double arm) {
     /*
     Get the polar angle of an object in frame with respect to the stage
     Args:
@@ -90,7 +90,7 @@ double get_theta_prime(double phi, double theta, double offset_x, double offset_
     double denom_2 = pow(r_center, 2)/pow(sin(theta), 2)/pow(cos(phi), 2);
     double denom_3 = 2*r_center*(offset_x + offset_y*tan(phi) + offset_z/tan(theta)/cos(phi));
     double denom = sqrt(denom_1 + denom_2 - denom_3);
-    return acos(num/denom) + asin(arm*sin(theta)*cos(phi)/denom) + error;
+    return acos(num/denom) + asin(arm*sin(theta)*cos(phi)/denom);
 }
 
 int get_motor_position(int motor_begin, int motor_end, float ref_begin, float ref_end, double ref_target) {

@@ -31,8 +31,8 @@ public:
     double offset_y;
     double offset_z;
     double arm;
-    double theta_prime_error;
-    double phi_prime_error;
+    int pan_offset;
+    int tilt_offset;
     int begin_pan;
     int end_pan;
     int begin_tilt;
@@ -44,10 +44,10 @@ public:
 
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
                    double mag, const std::string &position_method, double eps, bool report_average, double update,
-                   int update_time, double r_center, bool enable_stage, double hfovx, double hfovy,
-                   double offset_x, double offset_y, double offset_z, double arm, double theta_prime_error,
-                   double phi_prime_error, int begin_pan, int end_pan, int begin_tilt, int end_tilt,
-                   float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle) {
+                   int update_time, double r_center, bool enable_stage, double hfovx, double hfovy, double offset_x,
+                   double offset_y, double offset_z, double arm, int pan_offset, int tilt_offset, int begin_pan,
+                   int end_pan, int begin_tilt, int end_tilt, float begin_pan_angle, float end_pan_angle,
+                   float begin_tilt_angle, float end_tilt_angle) {
         this->dt = dt;
         this->enable_tracking = enable_tracking;
         this->Nx = Nx;
@@ -68,8 +68,8 @@ public:
         this->offset_y = offset_y;
         this->offset_z = offset_z;
         this->arm = arm;
-        this->theta_prime_error = theta_prime_error;
-        this->phi_prime_error = phi_prime_error;
+        this->pan_offset = pan_offset;
+        this->tilt_offset = tilt_offset;
         this->begin_pan = begin_pan;
         this->end_pan = end_pan;
         this->begin_tilt = begin_tilt;
@@ -491,8 +491,8 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
 
             double theta = get_theta(y, proc_init.Ny, proc_init.hfovy);
             double phi = get_phi(x, proc_init.Nx, proc_init.hfovx);
-            double theta_prime = get_theta_prime(phi, theta, proc_init.offset_x, proc_init.offset_y, proc_init.offset_z, proc_init.r_center, proc_init.arm, proc_init.theta_prime_error);
-            double phi_prime = get_phi_prime(phi, proc_init.offset_x, proc_init.offset_y, proc_init.r_center, proc_init.phi_prime_error);
+            double theta_prime = get_theta_prime(phi, theta, proc_init.offset_x, proc_init.offset_y, proc_init.offset_z, proc_init.r_center, proc_init.arm);
+            double phi_prime = get_phi_prime(phi, proc_init.offset_x, proc_init.offset_y, proc_init.r_center);
             int pan_position = get_motor_position(proc_init.begin_pan, proc_init.end_pan,
                                                   proc_init.begin_pan_angle, proc_init.end_pan_angle, phi_prime);
             // Convert tilt to FLIR frame
@@ -507,7 +507,7 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
                 //       pan_position, proc_init.begin_pan, proc_init.end_pan, tilt_position,
                 //       proc_init.begin_tilt, proc_init.end_tilt);
                 //printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
-                ctrl.update_setpoints(pan_position, tilt_position);
+                ctrl.update_setpoints(pan_position + proc_init.pan_offset, tilt_position + proc_init.tilt_offset);
                 StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);
                 return info;
             }
