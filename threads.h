@@ -497,13 +497,18 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 if (!result_boxes.empty()) {
                     bbox = result_boxes[0];
                     ctrl.activate_fine();
-                    tracker->init(color_frame, bbox);
-                    double target_x = (double) bbox.x + (bbox.width / 2.0) - (width / 2.0);
-                    double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);
-                    int pan_inc = (int) (get_phi(target_x, width, hfovx) * 180.0 / M_PI / 0.02);
-                    int tilt_inc = (int) (get_phi(target_y, height, hfovy) * 180.0 / M_PI / 0.02);
-                    if (enable_stage)
-                        ctrl.increment_setpoints(pan_inc, tilt_inc);
+                    cv::Point2f originalCentroid((float)(bbox.x + bbox.width / 2.0), (float)(bbox.y + bbox.height / 2.0));
+                    float scaleFactor = 1.2;
+                    int newWidth = (int)((float)bbox.width * scaleFactor);
+                    int newHeight = (int)((float)bbox.height * scaleFactor);
+
+                    // Create a new rectangle with increased dimensions around the same centroid
+                    cv::Rect newRect;
+                    newRect.width = newWidth;
+                    newRect.height = newHeight;
+                    newRect.x = (int)(originalCentroid.x - newRect.width / 2.0);
+                    newRect.y = (int)(originalCentroid.y - newRect.height / 2.0);
+                    tracker->init(color_frame, newRect);
                 }
             } else {
                 bool isTrackingSuccessful = tracker->update(color_frame, bbox);
