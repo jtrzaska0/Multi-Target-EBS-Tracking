@@ -1,7 +1,7 @@
 {
   "PROGRAM_PARAMETERS": {
     "DEVICE_TYPE": "xplorer",
-    "INTEGRATION_TIME_MS": 2,
+    "INTEGRATION_TIME_MS": 5,
     "ENABLE_TRACKING": true,
     "COMMAND_METHOD": "dbscan-history",
     "EPSILON": 100,
@@ -50,7 +50,6 @@
     "ARM": 0.115,
     "OBJECT_DIST": 50,
     "FOCUS_DIST": 50,
-    "PIXEL_SIZE": 0.000009,
     "PAN_OFFSET": 0,
     "TILT_OFFSET": 0,
     "START_PAN_ANGLE": -1.57079632679,

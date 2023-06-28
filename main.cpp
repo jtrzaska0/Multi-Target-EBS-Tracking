@@ -108,7 +108,6 @@ int main(int argc, char *argv[]) {
     double offset_z = stage_params.value("OFFSET_Z", 0.0);
     double arm = stage_params.value("ARM_LENGTH", 0.2);
     double dist = stage_params.value("FOCUS_DIST", 999999.9);
-    double px_size = stage_params.value("PIXEL_SIZE", 0.000009);
     float begin_pan_angle = (float) stage_params.value("START_PAN_ANGLE", -M_PI_2);
     float end_pan_angle = (float) stage_params.value("END_PAN_ANGLE", M_PI_2);
     float begin_tilt_angle = (float) stage_params.value("START_TILT_ANGLE", -M_PI / 6);
@@ -167,9 +166,11 @@ int main(int argc, char *argv[]) {
 
     int Nx = 640;
     int Ny = 480;
+    double px_size = 0.000009;
     if (device_type == "davis") {
         Nx = 346;
         Ny = 260;
+        px_size = 0.0000185;
     }
 
     int ret;
@@ -197,7 +198,20 @@ int main(int argc, char *argv[]) {
             cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_SET, max_tilt_speed) ||
             cpi_ptcmd(cer, &status, OP_PAN_LOWER_SPEED_LIMIT_SET, min_pan_speed) ||
             cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_SET, max_pan_speed) ||
-            cpi_ptcmd(cer, &status, OP_PAN_ACCEL_SET, pan_acc) || cpi_ptcmd(cer, &status, OP_TILT_ACCEL_SET, tilt_acc))
+            cpi_ptcmd(cer, &status, OP_PAN_ACCEL_SET, pan_acc) ||
+            cpi_ptcmd(cer, &status, OP_TILT_ACCEL_SET, tilt_acc))
+            die("Basic unit queries failed.\n");
+
+        if (cpi_ptcmd(cer, &status, OP_PAN_USER_MAX_POS_SET, 4500) ||
+            cpi_ptcmd(cer, &status, OP_PAN_USER_MIN_POS_SET, -4500) ||
+            cpi_ptcmd(cer, &status, OP_TILT_USER_MAX_POS_SET, 1500) ||
+            cpi_ptcmd(cer, &status, OP_TILT_USER_MIN_POS_SET, -1500) ||
+            cpi_ptcmd(cer, &status, OP_TILT_LOWER_SPEED_LIMIT_SET, 6000) ||
+            cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_SET, 9000) ||
+            cpi_ptcmd(cer, &status, OP_PAN_LOWER_SPEED_LIMIT_SET, 6000) ||
+            cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_SET, 9000) ||
+            cpi_ptcmd(cer, &status, OP_PAN_ACCEL_SET, 9000) ||
+            cpi_ptcmd(cer, &status, OP_TILT_ACCEL_SET, 9000))
             die("Basic unit queries failed.\n");
 
         printf("Min Pan: %0.2f deg\nMax Pan: %0.2f deg\n", min_pan_pos * 0.02, max_pan_pos * 0.02);
