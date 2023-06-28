@@ -138,13 +138,16 @@ int main(int argc, char *argv[]) {
     bool enable_pid = params.value("ENABLE_PID", true);
     double theta_prime_error = stage_params.value("TILT_ERROR", 0.0);
     double phi_prime_error = stage_params.value("PAN_ERROR", 0.0);
+    double ebs_eps = params.value("EBS_EPSILON", 8.0);
+    int ebs_num_pts = params.value("EBS_NUM_PTS", 8);
+    double ebs_tau = params.value("EBS_TAU", 1.2);
     Buffers buffers(history_size);
 
     // DBSCAN
     Eigen::MatrixXd invals {Eigen::MatrixXd::Zero(1, 3)};
-    invals(0, 0) = 8;
-    invals(0, 1) = 8;
-    invals(0, 2) = 1.2;
+    invals(0, 0) = ebs_eps;
+    invals(0, 1) = ebs_num_pts;
+    invals(0, 2) = ebs_tau;
 
     // Model initializer
     double DT = integrationtime;

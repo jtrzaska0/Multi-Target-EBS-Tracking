@@ -19,7 +19,10 @@
     "KD_FINE": 0.05,
     "ENABLE_DNN": true,
     "CONFIDENCE": 0.5,
-    "ENABLE_PID": false
+    "ENABLE_PID": false,
+    "EBS_EPSILON": 12,
+    "EBS_NUM_PTS": 3,
+    "EBS_TAU": 1.2
   },
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,
@@ -45,8 +48,8 @@
     "OFFSET_Y": 0.13,
     "OFFSET_Z": -0.10,
     "ARM": 0.115,
-    "OBJECT_DIST": 13.5,
-    "FOCUS_DIST": 13.5,
+    "OBJECT_DIST": 50,
+    "FOCUS_DIST": 50,
     "PIXEL_SIZE": 0.000009,
     "PAN_ERROR": 0.0,
     "TILT_ERROR": 0.0,
