@@ -121,9 +121,6 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
 
     printf("Press space to stop...\n");
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
-        if (key_is_pressed(XK_space)) {
-            active = false;
-        }
         std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
         if (packetContainer == nullptr) {
@@ -163,6 +160,9 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
         double eventRate = 1000000 * eventCount / (double)processing_duration.count();
         rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
+        if (key_is_pressed(XK_space)) {
+            active = false;
+        }
     }
     handle.dataStop();
     rateFile.close();
@@ -298,9 +298,9 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, c
             }
         }
         auto stop_processing = std::chrono::high_resolution_clock::now();
-        auto processing_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start_processing);
+        auto processing_duration = std::chrono::duration_cast<std::chrono::microseconds>(stop_processing - start_processing);
         auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start);
-        double eventRate = eventCount / (double)processing_duration.count();
+        double eventRate = 1000000 * eventCount / (double)processing_duration.count();
         rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
         if (key_is_pressed(XK_space)) {
