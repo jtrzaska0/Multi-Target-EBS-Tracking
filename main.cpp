@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
     double r_center = stage_params.value("OBJECT_DIST", 999999.9);
     bool enable_event_log = params.value("ENABLE_LOGGING", false);
     std::string event_file = params.value("EVENT_FILEPATH", "recording");
-    double stage_update = stage_params.value("STAGE_UPDATE", 0.02);
+    int stage_update = stage_params.value("STAGE_UPDATE", 5);
     int update_time = stage_params.value("UPDATE_TIME", 100);
     bool report_average = params.value("REPORT_AVERAGE", false);
     const int history_size = params.value("HISTORY_SIZE", 12);
@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
     bool verbose = params.value("VERBOSE", false);
     double coarse_overshoot_time = stage_params.value("COARSE_OVERSHOOT_TIME", 0.2);
     double fine_overshoot_time = stage_params.value("FINE_OVERSHOOT_TIME", 0.2);
-    double overshoot_thres = stage_params.value("OVERSHOOT_THRESHOLD", 0.2);
+    int overshoot_thres = stage_params.value("OVERSHOOT_THRESHOLD", 100);
     Buffers buffers(history_size);
 
     // DBSCAN
