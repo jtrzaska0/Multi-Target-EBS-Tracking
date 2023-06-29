@@ -413,6 +413,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 printf("Fine track enabled.\n");
             else
                 printf("Fine track disabled.\n");
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         if (enable_dnn) {
             if (!ctrl.get_tracker_status()) {
