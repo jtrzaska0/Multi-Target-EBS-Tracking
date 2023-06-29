@@ -69,11 +69,11 @@ public:
                     double kd_fine, int pan_max, int pan_min, int tilt_max, int tilt_min,
                     std::chrono::time_point<std::chrono::high_resolution_clock> start, const std::string& event_file,
                     bool enable_logging, struct cerial *cer, bool pid, double fine_time, double coarse_time,
-                    double overshoot_thres):
+                    double overshoot_thres, int update_time, double update_thres):
             pan_ctrl(kp_coarse, ki_coarse, kd_coarse, pan_max, pan_min), active(true), pan_setpoint(0), tilt_setpoint(0),
             tilt_ctrl(kp_coarse, ki_coarse, kd_coarse, tilt_max, tilt_min), cer(cer), status(0), stageFile(event_file + "-stage.csv"),
             start(start), enable_logging(enable_logging), fine_active(false), current_pan(0), current_tilt(0), last_pan(0),
-            last_tilt(0), pid(pid), pan_offset(0), tilt_offset(0) {
+            last_tilt(0), pid(pid), pan_offset(0), tilt_offset(0), last_update(std::chrono::high_resolution_clock::now()) {
         this->kp_coarse = kp_coarse;
         this->ki_coarse = ki_coarse;
         this->kd_coarse = kd_coarse;
@@ -83,6 +83,8 @@ public:
         this->fine_overshoot_time = fine_time;
         this->coarse_overshoot_time = coarse_time;
         this->overshoot_thres = overshoot_thres;
+        this->update_time = update_time;
+        this->update_thres = update_thres;
         if (cer) {
             ctrl_thread = std::thread(&StageController::ctrl_loop, this);
         } else {
@@ -173,6 +175,17 @@ private:
     double fine_overshoot_time;
     double coarse_overshoot_time;
     double overshoot_thres;
+    int update_time;
+    double update_thres;
+    std::chrono::time_point<std::chrono::high_resolution_clock> last_update;
+
+    bool check_move(double pan_change, double tilt_change) {
+        auto current = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(current - last_update).count();
+        if ((int)elapsed > update_time && pan_change > update_thres && tilt_change > update_thres)
+            return true;
+        return false;
+    }
 
     void update_log(int pan, int tilt) {
         if (enable_logging) {
@@ -252,9 +265,12 @@ private:
                 }
             }
             update_mtx.unlock();
-            cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
-            cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_command);
-            update_log(pan_command, tilt_command);
+            if (check_move(pan_change, tilt_change)) {
+                cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
+                cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_command);
+                update_log(pan_command, tilt_command);
+                last_update = std::chrono::high_resolution_clock::now();
+            }
             last_pan = current_pan;
             last_tilt = current_tilt;
             start_time = std::chrono::high_resolution_clock::now();

@@ -205,25 +205,11 @@ int main(int argc, char *argv[]) {
             cpi_ptcmd(cer, &status, OP_PAN_ACCEL_SET, pan_acc) ||
             cpi_ptcmd(cer, &status, OP_TILT_ACCEL_SET, tilt_acc))
             die("Basic unit queries failed.\n");
-
-        if (cpi_ptcmd(cer, &status, OP_PAN_USER_MAX_POS_SET, 4500) ||
-            cpi_ptcmd(cer, &status, OP_PAN_USER_MIN_POS_SET, -4500) ||
-            cpi_ptcmd(cer, &status, OP_TILT_USER_MAX_POS_SET, 1500) ||
-            cpi_ptcmd(cer, &status, OP_TILT_USER_MIN_POS_SET, -1500) ||
-            cpi_ptcmd(cer, &status, OP_TILT_LOWER_SPEED_LIMIT_SET, 6000) ||
-            cpi_ptcmd(cer, &status, OP_TILT_UPPER_SPEED_LIMIT_SET, 9000) ||
-            cpi_ptcmd(cer, &status, OP_PAN_LOWER_SPEED_LIMIT_SET, 6000) ||
-            cpi_ptcmd(cer, &status, OP_PAN_UPPER_SPEED_LIMIT_SET, 9000) ||
-            cpi_ptcmd(cer, &status, OP_PAN_ACCEL_SET, 9000) ||
-            cpi_ptcmd(cer, &status, OP_TILT_ACCEL_SET, 9000))
-            die("Basic unit queries failed.\n");
-
-        printf("Min Pan: %0.2f deg\nMax Pan: %0.2f deg\n", min_pan_pos * 0.02, max_pan_pos * 0.02);
-        printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", min_tilt_pos * 0.02, max_tilt_pos * 0.02);
     }
     auto start_time = std::chrono::high_resolution_clock::now();
     StageController ctrl(kp_coarse, ki_coarse, kd_coarse, kp_fine, ki_fine, kd_fine, 4500, -4500, 1500, -1500, start_time,
-                         event_file, enable_event_log, cer, enable_pid, fine_overshoot_time, coarse_overshoot_time, overshoot_thres);
+                         event_file, enable_event_log, cer, enable_pid, fine_overshoot_time, coarse_overshoot_time,
+                         overshoot_thres, update_time, stage_update);
 
     int cam_width = 640;
     int cam_height = 480;
@@ -234,10 +220,9 @@ int main(int argc, char *argv[]) {
                               cv::WindowFlags::WINDOW_GUI_EXPANDED);
 
     ProcessingInit proc_init(DT, enable_tracking, Nx, Ny, enable_event_log, event_file, mag, position_method, eps,
-                             report_average, stage_update, update_time, r_center, enable_stage, hfovx, hfovy,
-                             offset_x, offset_y, offset_z, arm, pan_offset, tilt_offset, min_pan_pos,
-                             max_pan_pos, min_tilt_pos, max_tilt_pos, begin_pan_angle, end_pan_angle,
-                             begin_tilt_angle, end_tilt_angle, verbose);
+                             report_average, r_center, enable_stage, hfovx, hfovy, offset_x, offset_y, offset_z, arm,
+                             pan_offset, tilt_offset, min_pan_pos, max_pan_pos, min_tilt_pos, max_tilt_pos,
+                             begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, verbose);
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                                    cv::WindowFlags::WINDOW_GUI_EXPANDED);

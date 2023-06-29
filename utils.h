@@ -21,8 +21,6 @@ public:
     std::string position_method;
     double eps;
     bool report_average;
-    double update;
-    int update_time;
     double r_center;
     bool enable_stage;
     double hfovx;
@@ -44,11 +42,10 @@ public:
     bool verbose;
 
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
-                   double mag, const std::string &position_method, double eps, bool report_average, double update,
-                   int update_time, double r_center, bool enable_stage, double hfovx, double hfovy, double offset_x,
-                   double offset_y, double offset_z, double arm, int pan_offset, int tilt_offset, int begin_pan,
-                   int end_pan, int begin_tilt, int end_tilt, float begin_pan_angle, float end_pan_angle,
-                   float begin_tilt_angle, float end_tilt_angle, bool verbose) {
+                   double mag, const std::string &position_method, double eps, bool report_average, double r_center,
+                   bool enable_stage, double hfovx, double hfovy, double offset_x, double offset_y, double offset_z,
+                   double arm, int pan_offset, int tilt_offset, int begin_pan, int end_pan, int begin_tilt, int end_tilt,
+                   float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle, bool verbose) {
         this->dt = dt;
         this->enable_tracking = enable_tracking;
         this->Nx = Nx;
@@ -59,8 +56,6 @@ public:
         this->position_method = position_method;
         this->eps = eps;
         this->report_average = report_average;
-        this->update = update;
-        this->update_time = update_time;
         this->r_center = r_center;
         this->enable_stage = enable_stage;
         this->hfovx = hfovx;
@@ -124,12 +119,10 @@ public:
 
 class StageInfo {
 public:
-    std::chrono::time_point<std::chrono::high_resolution_clock> end;
     int prev_pan;
     int prev_tilt;
 
-    StageInfo(std::chrono::time_point<std::chrono::high_resolution_clock> end, int prev_pan, int prev_tilt) {
-        this->end = end;
+    StageInfo(int prev_pan, int prev_tilt) {
         this->prev_pan = prev_pan;
         this->prev_tilt = prev_tilt;
     }
@@ -142,14 +135,6 @@ Eigen::MatrixXd armaToEigen(const arma::mat& armaMatrix) {
 
 double update_average(int prev_val, int new_val, int n_samples) {
     return (prev_val * n_samples + new_val) / ((double) n_samples + 1);
-}
-
-bool check_move_stage(int pan_position, int prev_pan_position, int tilt_position, int prev_tilt_position, double update) {
-    float pan_change = abs((float)(pan_position - prev_pan_position) / (float)prev_pan_position);
-    float tilt_change = abs((float)(tilt_position - prev_tilt_position) / (float)prev_tilt_position);
-    if (pan_change > update || tilt_change > update)
-        return true;
-    return false;
 }
 
 arma::mat positions_vector_to_matrix(std::vector<double> positions) {
@@ -482,12 +467,8 @@ WindowInfo process_packet(std::vector<double> events, DBSCAN_KNN T, const Proces
     return tracking_info;
 }
 
-StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arma::mat positions,
-                     std::chrono::time_point<std::chrono::high_resolution_clock> last_start, int prev_pan,
-                     int prev_tilt) {
+StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arma::mat positions, int prev_pan, int prev_tilt) {
     if (proc_init.enable_stage) {
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> timestamp_ms = end - last_start;
         if (positions.n_cols > 0) {
             // Go to first position in list. Selecting between objects to be implemented later.
             double x = positions(0, 0) - ((double) proc_init.Nx / 2);
@@ -503,21 +484,12 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
             theta_prime = M_PI_2 - theta_prime;
             int tilt_position = get_motor_position(proc_init.begin_tilt, proc_init.end_tilt,
                                                    proc_init.begin_tilt_angle, proc_init.end_tilt_angle, theta_prime);
-
-            bool move = check_move_stage(pan_position, prev_pan, tilt_position, prev_tilt, proc_init.update);
-            if (timestamp_ms.count() > proc_init.update_time && move) {
-                //printf("Calculated Stage Angles: (%0.2f, %0.2f)\n", theta_prime * 180 / M_PI, phi_prime * 180 / M_PI);
-                //printf("Stage Positions:\n     Pan: %d (%d, %d)\n     Tilt: %d (%d, %d)\n",
-                //       pan_position, proc_init.begin_pan, proc_init.end_pan, tilt_position,
-                //       proc_init.begin_tilt, proc_init.end_tilt);
-                //printf("Moving stage to (%.2f, %.2f)\n\n", x, y);
-                ctrl.update_setpoints(pan_position + proc_init.pan_offset, tilt_position + proc_init.tilt_offset);
-                StageInfo info(std::chrono::high_resolution_clock::now(), pan_position, tilt_position);
-                return info;
-            }
+            ctrl.update_setpoints(pan_position + proc_init.pan_offset, tilt_position + proc_init.tilt_offset);
+            StageInfo info(pan_position, tilt_position);
+            return info;
         }
     }
-    StageInfo info(last_start, prev_pan, prev_tilt);
+    StageInfo info(prev_pan, prev_tilt);
     return info;
 }
 
@@ -535,8 +507,7 @@ read_future(StageController& ctrl, std::future<WindowInfo> &future, const Proces
     int elapsed = (int)duration.count();
     if (!window_info.event_info.event_image.empty())
         saveImage(window_info.event_info.event_image, "./event_images", std::to_string(elapsed));
-    StageInfo stage_info = move_stage(ctrl, proc_init, window_info.stage_positions, prevStage.end, prevStage.prev_pan,
-                                      prevStage.prev_tilt);
+    StageInfo stage_info = move_stage(ctrl, proc_init, window_info.stage_positions, prevStage.prev_pan, prevStage.prev_tilt);
     std::tuple<StageInfo, WindowInfo> ret = {stage_info, window_info};
     return ret;
 }

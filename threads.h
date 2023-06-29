@@ -322,7 +322,7 @@ void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, c
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
     std::binary_semaphore update_positions(1);
     WindowInfo prev_trackingInfo;
-    StageInfo prev_stageInfo(std::chrono::high_resolution_clock::now(), 0, 0);
+    StageInfo prev_stageInfo(0, 0);
     while (active) {
         bool A_processed = false;
         bool B_processed = false;
