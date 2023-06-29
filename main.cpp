@@ -141,6 +141,9 @@ int main(int argc, char *argv[]) {
     int ebs_num_pts = params.value("EBS_NUM_PTS", 8);
     double ebs_tau = params.value("EBS_TAU", 1.2);
     bool verbose = params.value("VERBOSE", false);
+    double coarse_overshoot_time = stage_params.value("COARSE_OVERSHOOT_TIME", 0.2);
+    double fine_overshoot_time = stage_params.value("FINE_OVERSHOOT_TIME", 0.2);
+    double overshoot_thres = stage_params.value("OVERSHOOT_THRESHOLD", 0.2);
     Buffers buffers(history_size);
 
     // DBSCAN
@@ -219,10 +222,11 @@ int main(int argc, char *argv[]) {
         printf("Min Tilt: %0.2f deg\nMax Tilt: %0.2f deg\n", min_tilt_pos * 0.02, max_tilt_pos * 0.02);
     }
     auto start_time = std::chrono::high_resolution_clock::now();
-    StageController ctrl(kp_coarse, ki_coarse, kd_coarse, kp_fine, ki_fine, kd_fine, 4500, -4500, 1500, -1500, start_time, event_file, enable_event_log, cer, enable_pid);
+    StageController ctrl(kp_coarse, ki_coarse, kd_coarse, kp_fine, ki_fine, kd_fine, 4500, -4500, 1500, -1500, start_time,
+                         event_file, enable_event_log, cer, enable_pid, fine_overshoot_time, coarse_overshoot_time, overshoot_thres);
 
-    int cam_width = 648;
-    int cam_height = 486;
+    int cam_width = 640;
+    int cam_height = 480;
     double nfov_hfovx = get_hfov(nfov_focal_len, dist, nfov_nx, nfov_px_size);
     double nfov_hfovy = get_hfov(nfov_focal_len, dist, nfov_ny, nfov_px_size);
     StageCam stageCam(cam_width, cam_height);
