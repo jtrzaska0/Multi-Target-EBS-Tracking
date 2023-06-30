@@ -69,7 +69,7 @@ public:
                     double kd_fine, int pan_max, int pan_min, int tilt_max, int tilt_min,
                     std::chrono::time_point<std::chrono::high_resolution_clock> start, const std::string& event_file,
                     bool enable_logging, struct cerial *cer, bool pid, double fine_time, double coarse_time,
-                    double overshoot_thres, int update_time, int update_thres):
+                    double overshoot_thres, int update_time, int update_thres, bool verbose):
             pan_ctrl(kp_coarse, ki_coarse, kd_coarse, pan_max, pan_min), active(true), pan_setpoint(0), tilt_setpoint(0),
             tilt_ctrl(kp_coarse, ki_coarse, kd_coarse, tilt_max, tilt_min), cer(cer), status(0), stageFile(event_file + "-stage.csv"),
             start(start), enable_logging(enable_logging), fine_active(false), current_pan(0), current_tilt(0), pid(pid),
@@ -85,6 +85,7 @@ public:
         this->overshoot_thres = overshoot_thres;
         this->update_time = update_time;
         this->update_thres = update_thres;
+        this->verbose = verbose;
         if (cer) {
             ctrl_thread = std::thread(&StageController::ctrl_loop, this);
         } else {
@@ -176,6 +177,7 @@ private:
     int update_time;
     int update_thres;
     std::chrono::time_point<std::chrono::high_resolution_clock> last_update;
+    bool verbose;
 
     bool check_move(double pan_change, double tilt_change) {
         auto current = std::chrono::high_resolution_clock::now();
@@ -224,7 +226,7 @@ private:
                 printf("Pan Offset: %d steps\n", pan_offset);
             }
             auto stop_time = std::chrono::high_resolution_clock::now();
-            auto command_time = std::chrono::duration_cast<std::chrono::microseconds>(stop_time - start_time).count();
+            auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
             update_mtx.lock();
             double pan_velocity = (pan_setpoint - current_pan) / (double)command_time;
             double tilt_velocity = (tilt_setpoint - current_tilt) / (double)command_time;
@@ -234,8 +236,8 @@ private:
             int pan_overshoot = 0;
             if (pan_change < overshoot_thres && tilt_change < overshoot_thres) {
                 if (fine_active) {
-                    tilt_overshoot = (int)(tilt_velocity * fine_overshoot_time * 1000000);
-                    pan_overshoot = (int)(pan_velocity * fine_overshoot_time * 1000000);
+                    tilt_overshoot = (int)(tilt_velocity * fine_overshoot_time * 1000);
+                    pan_overshoot = (int)(pan_velocity * fine_overshoot_time * 1000);
                 }
                 else {
                     tilt_overshoot = (int)(tilt_velocity * coarse_overshoot_time);
@@ -263,11 +265,20 @@ private:
                 }
             }
             update_mtx.unlock();
-            if (check_move(pan_change, tilt_change)) {
+            bool move = check_move(pan_change, tilt_change);
+            if (move) {
                 cpi_ptcmd(cer, &status, OP_TILT_DESIRED_POS_SET, tilt_command);
                 cpi_ptcmd(cer, &status, OP_PAN_DESIRED_POS_SET, pan_command);
                 update_log(pan_command, tilt_command);
                 last_update = std::chrono::high_resolution_clock::now();
+            }
+            if (verbose) {
+                printf("Pan Change: %d steps\nTilt Change: %d steps\n", pan_change, tilt_change);
+                printf("Pan Velocity: %0.3f steps/ms\nTilt Velocity: %0.3f steps/ms\n", pan_velocity, tilt_velocity);
+                printf("Pan Overshoot: %d steps\nTilt Overshoot: %d steps\n", pan_overshoot, tilt_overshoot);
+                printf("Pan Offset: %d steps\nTilt Offset: %d steps\n", pan_offset, tilt_offset);
+                printf("Pan Command: %d steps\nTilt Command: %d steps\n", pan_command, tilt_command);
+                printf("Stage MovedL %d\n\n", (int)move);
             }
             start_time = std::chrono::high_resolution_clock::now();
         }

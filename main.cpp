@@ -209,7 +209,7 @@ int main(int argc, char *argv[]) {
     auto start_time = std::chrono::high_resolution_clock::now();
     StageController ctrl(kp_coarse, ki_coarse, kd_coarse, kp_fine, ki_fine, kd_fine, 4500, -4500, 1500, -1500, start_time,
                          event_file, enable_event_log, cer, enable_pid, fine_overshoot_time, coarse_overshoot_time,
-                         overshoot_thres, update_time, stage_update);
+                         overshoot_thres, update_time, stage_update, verbose);
 
     int cam_width = 640;
     int cam_height = 480;
