@@ -72,8 +72,8 @@ public:
                     double overshoot_thres, int update_time, int update_thres):
             pan_ctrl(kp_coarse, ki_coarse, kd_coarse, pan_max, pan_min), active(true), pan_setpoint(0), tilt_setpoint(0),
             tilt_ctrl(kp_coarse, ki_coarse, kd_coarse, tilt_max, tilt_min), cer(cer), status(0), stageFile(event_file + "-stage.csv"),
-            start(start), enable_logging(enable_logging), fine_active(false), current_pan(0), current_tilt(0), last_pan(0),
-            last_tilt(0), pid(pid), pan_offset(0), tilt_offset(0), last_update(std::chrono::high_resolution_clock::now()) {
+            start(start), enable_logging(enable_logging), fine_active(false), current_pan(0), current_tilt(0), pid(pid),
+            pan_offset(0), tilt_offset(0), last_update(std::chrono::high_resolution_clock::now()) {
         this->kp_coarse = kp_coarse;
         this->ki_coarse = ki_coarse;
         this->kd_coarse = kd_coarse;
@@ -161,8 +161,6 @@ private:
     int tilt_setpoint;
     int current_pan;
     int current_tilt;
-    int last_pan;
-    int last_tilt;
     uint16_t status;
     bool active;
     bool fine_active;
@@ -227,11 +225,11 @@ private:
             }
             auto stop_time = std::chrono::high_resolution_clock::now();
             auto command_time = std::chrono::duration_cast<std::chrono::microseconds>(stop_time - start_time).count();
-            double pan_velocity = (current_pan - last_pan) / (double)command_time;
-            double tilt_velocity = (current_tilt - last_tilt) / (double)command_time;
             update_mtx.lock();
-            int pan_change = abs((pan_setpoint - last_pan));
-            int tilt_change = abs((tilt_setpoint - last_tilt));
+            double pan_velocity = (pan_setpoint - current_pan) / (double)command_time;
+            double tilt_velocity = (tilt_setpoint - current_tilt) / (double)command_time;
+            int pan_change = abs((pan_setpoint - current_pan));
+            int tilt_change = abs((tilt_setpoint - current_tilt));
             int tilt_overshoot = 0;
             int pan_overshoot = 0;
             if (pan_change < overshoot_thres && tilt_change < overshoot_thres) {
@@ -271,8 +269,6 @@ private:
                 update_log(pan_command, tilt_command);
                 last_update = std::chrono::high_resolution_clock::now();
             }
-            last_pan = current_pan;
-            last_tilt = current_tilt;
             start_time = std::chrono::high_resolution_clock::now();
         }
     }
