@@ -316,7 +316,7 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, c
     return (EXIT_SUCCESS);
 }
 
-void processing_threads(StageController& ctrl, Buffers& buffers, DBSCAN_KNN T, const ProcessingInit& proc_init,
+void processing_threads(StageController& ctrl, Buffers& buffers, const DBSCAN_KNN& T, const ProcessingInit& proc_init,
                         std::chrono::time_point<std::chrono::high_resolution_clock> start, const bool& active) {
     std::ofstream detectionsFile(proc_init.event_file + "-detections.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");

@@ -45,6 +45,9 @@ It should be installed **with contributions**.
 ## libcaer
 The `libcaer` library should be installed by following the instructions found on their [GitLab page](https://gitlab.com/inivation/dv/libcaer).
 
+## VimbaCPP
+The Vimba SDK is used to communicate with an Allied Vision 1800 U-500. First, install the SDK by following the instructions on [their website](https://www.alliedvision.com/en/products/vimba-sdk/). If needed, modify the directories in `FindVimbaCPP.cmake` (located under `cmake/modules`) to link to the library.
+
 ## Usage
 To run the program, enter the following command in the terminal: `./LiveTracking -p tcp:<FLIR IP ADDR> <PATH TO CONFIG JSON> <PATH TO ONNX FILE>`.
 The program expects three arguments even when the stage is not in use. If the FLIR stage is not present, or you do not

@@ -451,7 +451,7 @@ EventInfo read_packets(std::vector<double> events, int Nx, int Ny, bool enable_e
 
 // take a packet and run through the entire processing taskflow
 // return a cv mat for plotting and an arma mat for stage positions
-WindowInfo process_packet(std::vector<double> events, DBSCAN_KNN T, const ProcessingInit &proc_init,
+WindowInfo process_packet(const std::vector<double>& events, const DBSCAN_KNN& T, const ProcessingInit &proc_init,
                           const WindowInfo& prev_window, arma::mat& prev_positions,
                           std::binary_semaphore *update_positions, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
     cv::Mat event_image;

@@ -52,27 +52,13 @@ int main(int argc, char *argv[]) {
     /*
 
     Args:
-        argv[1]: Absolute path to config JSON file
-        argv[2]: -p
-        argv[3]: tcp:<FLIR stage IP address>
+        argv[1]: -p
+        argv[2]: tcp:<FLIR stage IP address>
+        argv[3]: Path to config JSON file
+        argv[4]: Path to ONNX file
 
     config.json:
-        DEVICE_TYPE: "xplorer" or "davis"
-        INTEGRATION_TIME_MS: Integration time in milliseconds.
-        PACKET_NUMBER: Number of event packets to aggregate.
-        ENABLE_TRACKING: true or false
-        ENABLE_STAGE: true or false
-        COMMAND_METHOD: Stage command calculation method: "median", "dbscan", or "median-history"
-        STAGE_UPDATE: Percent change required for stage to update positions
-        EPSILON: epsilon for mlpack clustering
-        MAGNIFICATION: Magnification
-        ENABLE_LOGGING: true or false
-        EVENT_FILEPATH: File for event CSV. Do not include the ".csv" extension
-        HISTORY_SIZE: Number of previous positions to average in history
-        MAX_SPEED: Number between 0 and 1. Sets percent of max speed to move the stage
-        SAVE_VIDEO: true or false
-        VIDEO_FILEPATH: File for video. Include the ".mp4" extension
-        VIDEO_FPS: Target video frames per second
+        See readme for variable descriptions.
 
     Ret:
         0
