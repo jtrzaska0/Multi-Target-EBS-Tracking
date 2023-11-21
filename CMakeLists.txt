@@ -18,6 +18,10 @@ find_package(X11 REQUIRED)
 include_directories(${X11_INCLUDE_DIR})
 link_directories(${X11_LIBRARIES})
 
+find_package(Boost 1.83.0 REQUIRED)
+include_directories(${Boost_INCLUDE_DIR})
+link_directories(${Boost_LIBRARIES})
+
 find_package(Eigen3 3.4.0 REQUIRED)
 include_directories(${Eigen3_INCLUDE_DIR})
 link_directories(${Eigen3_LIBRARIES})
@@ -34,6 +38,7 @@ endif ()
 add_executable(LiveTracking main.cpp ptu-sdk/examples/estrap.o)
 target_link_libraries(LiveTracking PUBLIC
         caer
+        ${Boost_LIBRARIES}
         ${VimbaCPP_LIBRARIES}
         ${CPI_LIB}
         ${M_LIB}
