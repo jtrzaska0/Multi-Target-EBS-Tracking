@@ -1,7 +1,7 @@
 # Installation
 
 ## conan
-This program relies on the Conan package manager to install the Eigen and Nlohmann JSON libraries. Installing Conan is
+This program relies on the Conan package manager to install the Boost, Eigen, and Nlohmann JSON libraries. Installing Conan is
 not required if you have these libraries already and CMake can find them.
 1. [Install Conan](https://docs.conan.io/2/installation.html)
 2. Generate a Conan profile by running `conan profile detect --force`
@@ -19,15 +19,11 @@ not required if you have these libraries already and CMake can find them.
 4. `cd` into working directory
 5. `conan install . -pr:b=default --output-folder=build --build=missing`
 
-When the other dependencies are installed, you can build by running:
-1. `cd build`
-2. `cmake -DCMAKE_C_COMPILER=gcc-11 -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release ..`
-3. `make`
-
-## Event Sensor Detection and Tracking
-To install the tracking algorithm, simply clone the Event Sensor Detection and Tracking repo into the working directory:
+## I2SL Repos
+Clone the `Event Sensor Detection and Tracking` and `stage-camera` repositories into the working directory:
 1. `cd .../Live-EBS-Tracking`
 2. `gh repo clone I2SL/Event-Sensor-Detection-and-Tracking`
+3. `gh repo clone I2SL/stage-camera`
 
 ## FLIR PTU-SDK
 The FLIR PTU-SDK is proprietary and must be purchased prior to running this program. Once the SDK libraries are built
@@ -47,6 +43,12 @@ The `libcaer` library should be installed by following the instructions found on
 
 ## VimbaCPP
 The Vimba SDK is used to communicate with an Allied Vision 1800 U-500. First, install the SDK by following the instructions on [their website](https://www.alliedvision.com/en/products/vimba-sdk/). If needed, modify the directories in `FindVimbaCPP.cmake` (located under `cmake/modules`) to link to the library.
+
+## Build
+When the all the dependencies above are installed, you can build by running:
+1. `cd build`
+2. `cmake -DCMAKE_C_COMPILER=gcc-11 -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release ..`
+3. `make`
 
 ## Usage
 To run the program, enter the following command in the terminal: `./LiveTracking -p tcp:<FLIR IP ADDR> <PATH TO CONFIG JSON> <PATH TO ONNX FILE>`.
