@@ -48,7 +48,7 @@ static void usbShutdownHandler(void *ptr) {
     globalShutdown.store(true);
 }
 
-int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter, const std::string& file,
+int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, bool enable_filter, const std::string& file,
                  std::chrono::time_point<std::chrono::high_resolution_clock> start, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
@@ -121,6 +121,8 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
 
     printf("Press space to stop...\n");
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
+        if (debug)
+            printf("Started EBS acquisition.\n");
         std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
         if (packetContainer == nullptr) {
@@ -163,6 +165,8 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
         if (key_is_pressed(XK_space)) {
             active = false;
         }
+        if (debug)
+            printf("Completed EBS acquisition.\n");
     }
     handle.dataStop();
     rateFile.close();
@@ -173,7 +177,7 @@ int read_xplorer(Buffers &buffers, const json &noise_params, bool enable_filter,
     return (EXIT_SUCCESS);
 }
 
-int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, const std::string& file,
+int read_davis(Buffers &buffers, const bool debug, const json &noise_params, bool enable_filter, const std::string& file,
                std::chrono::time_point<std::chrono::high_resolution_clock> start, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
@@ -264,6 +268,8 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, c
 
     printf("Press space to stop...\n");
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
+        if (debug)
+            printf("Started EBS acquisition.\n");
         std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
         if (packetContainer == nullptr) {
@@ -306,6 +312,8 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, c
         if (key_is_pressed(XK_space)) {
             active = false;
         }
+        if (debug)
+            printf("Completed EBS acquisition.\n");
     }
     rateFile.close();
     davisHandle.dataStop();
@@ -317,13 +325,15 @@ int read_davis(Buffers &buffers, const json &noise_params, bool enable_filter, c
 }
 
 void processing_threads(StageController& ctrl, Buffers& buffers, const DBSCAN_KNN& T, const ProcessingInit& proc_init,
-                        std::chrono::time_point<std::chrono::high_resolution_clock> start, const bool& active) {
+                        std::chrono::time_point<std::chrono::high_resolution_clock> start, const bool debug, const bool& active) {
     std::ofstream detectionsFile(proc_init.event_file + "-detections.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
     std::binary_semaphore update_positions(1);
     WindowInfo prev_trackingInfo;
     StageInfo prev_stageInfo(0, 0);
     while (active) {
+        if (debug)
+            printf("Started event processing.");
         bool A_processed = false;
         bool B_processed = false;
         if (buffers.PacketQueue.empty())
@@ -380,6 +390,8 @@ void processing_threads(StageController& ctrl, Buffers& buffers, const DBSCAN_KN
         }
         std::tie(prev_stageInfo, prev_trackingInfo) =
                 read_future(ctrl, fut_resultC, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
+        if (debug)
+            printf("Completed event processing.");
     }
     detectionsFile.close();
     eventFile.close();
@@ -396,13 +408,15 @@ cv::Mat formatYolov5(const cv::Mat& frame) {
 
 void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy,
                    const std::string& onnx_loc, bool enable_stage, bool enable_dnn, std::chrono::time_point<std::chrono::high_resolution_clock> start,
-                   double confidence_thres, const bool &active) {
+                   double confidence_thres, const bool debug, const bool &active) {
     std::vector<std::string> class_list{"drone"};
     cv::dnn::Net net;
     net = cv::dnn::readNet(onnx_loc);
     cv::Ptr<cv::Tracker> tracker = cv::TrackerKCF::create();
 
     while(active && cam.running()) {
+        if (debug)
+            printf("Started camera acquisition.");
         auto frame = cam.get_frame();
         cv::Mat color_frame;
         cv::cvtColor(frame, color_frame, cv::COLOR_GRAY2BGR);
@@ -539,5 +553,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
         int elapsed = (int)duration.count();
         saveImage(color_frame, "./camera_images", std::to_string(elapsed));
         cv::imshow("Camera", color_frame);
+        if (debug)
+            printf("Completed camera acquisition.");
     }
 }

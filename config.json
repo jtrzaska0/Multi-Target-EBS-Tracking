@@ -23,7 +23,8 @@
     "EBS_EPSILON": 12,
     "EBS_NUM_PTS": 3,
     "EBS_TAU": 1.2,
-    "VERBOSE": false
+    "VERBOSE": false,
+    "DEBUG": false
   },
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,
