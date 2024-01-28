@@ -227,6 +227,332 @@ The `StageInfo` class holds the previous pan and tilt position of the stage in s
 
 # Helper Functions
 
+## `bool directoryExists()`
+
+Located in `main.cpp`. Returns `true` if the given path is a valid directory.
+
+### Arguments
+
+* `const std::string& folderPath`: path to a folder as a string
+
+### Output
+
+* `bool`: Returns `true` if `folderPath` exists.
+
+## `bool deleteDirectory()`
+
+Located in `main.cpp`. Attempts to delete directory located at the given path. Returns `true` if successful.
+
+### Arguments
+
+* `const std::string& directoryPath`: path to a folder as a string
+
+### Output
+
+* `bool`: Returns `true` if the delete operation was successful.
+
+## `bool makeDirectory()`
+
+Located in `main.cpp`. Attempts to create directory located at the given path. Returns `true` if successful.
+
+### Arguments
+
+* `const std::string& directoryPath`: path to a folder as a string
+
+### Output
+
+* `bool`: Returns `true` if the creation operation was successful.
+
+## `double get_hfov()`
+
+Located in `pointing.h`. Returns half field of view in radians.
+
+### Arguments
+
+* `double focal_len`: focal length in meters
+* `double dist`: distance to focal plane in meters
+* `int npx`: number of pixels along the desired dimension
+* `double px_size`: pixel size in meters along the desired dimension
+
+### Output
+
+* `double`: Half field of view in radians.
+
+## `bool key_is_pressed()`
+
+Located in `pointing.h`. Returns `true` if a given key is pressed.
+
+### Arguments
+
+* `KeySym ks`: Key to check.
+
+### Output
+
+* `bool`: Returns `true` if the key associate with `ks` is pressed.
+
+## `double get_phi()`
+
+Located in `pointing.h`. Returns azimuthal angle of an object in frame. See thesis for figures depicting geometry.
+
+### Arguments
+
+* `double x`: x coordinate of object in frame (in pixels, origin at center of detector)
+* `int nx`: number of pixels along x
+* `double hfov`: horizontal half field of view in radians
+
+### Output
+
+* `double`: azimuthal angle in radians of an object with respect to center of detector
+
+## `double get_theta()`
+
+Located in `pointing.h`. Returns polar angle of an object in frame. See thesis for figures depicting geometry.
+
+### Arguments
+
+* `double y`: y coordinate of object in frame (in pixels, origin at center of detector)
+* `int ny`: number of pixels along y
+* `double hfov`: vertical half field of view in radians
+
+### Output
+
+* `double`: polar angle in radians of an object with respect to center of detector
+
+## `double get_phi_prime()`
+
+Located in `pointing.h`. Returns azimuthal angle of an object in frame with respect to the stage's center of rotation. See thesis for figures depicting geometry.
+
+### Arguments
+
+* `double phi`: azimuthal angle of object with respect to center of detector in radians
+* `double offset_x`: x distance in meters from center of detector to stage center of rotation (see thesis)
+* `double offset_y`: y distance in meters from center of detector to stage center of rotation (see thesis)
+* `double r_center`: distance to focal plane in meters
+
+### Output
+
+* `double`: azimuthal angle in radians of an object with respect to the stage's center of rotation
+
+## `double get_theta_prime()`
+
+Located in `pointing.h`. Returns the polar angle with respect to the stage's center of rotation necessary to center an object in the EBS frame on the stage-mounted camera. See thesis for figures depicting geometry.
+
+### Arguments
+
+* `double phi`: azimuthal angle of object with respect to center of detector in radians
+* `double theta`: polar angle of an object with respect to center of detector in radians
+* `double offset_x`: x distance in meters from center of detector to stage center of rotation (see thesis)
+* `double offset_y`: y distance in meters from center of detector to stage center of rotation (see thesis)
+* `double offset_z`: z distance in meters from center of detector to stage center of rotation (see thesis)
+* `double r_center`: distance to focal plane in meters
+* `double arm`: distance from stage center of rotation to center of mounted camera's detector
+
+### Output
+
+* `double`: polar angle in radians with respect to the stage's center of rotation necessary to center an object in the EBS frame on the stage-mounted camera
+
+## `int get_motor_position()`
+
+Located in `pointing.h`. Returns the motor position in steps corresponding to a given target angle. Works for both tilt and pan.
+
+### Arguments
+
+* `int motor_begin`: motor position in steps at the start of the reference frame
+* `int motor_end`: motor position in steps at the end of the reference frame
+* `float ref_begin`: reference frame start in radians
+* `float ref_end`: reference frame end in radians
+* `double ref_target`: desired target position in the reference frame in radians
+
+### Output
+
+* `int`: motor position in steps corresponding to `ref_target`
+
+## `cv::Mat formatYolov5()`
+
+Located in `threads.h`. Returns a square image for processing with YOLO.
+
+### Arguments
+
+* `const cv::Mat& frame`: image to be resized
+
+### Output
+
+* `cv::Mat result`: resized image with dimensions `max(frame.rows, frame.cols)` x `max(frame.rows, frame.cols)`
+
+## `Eigen::MatrixXd armaToEigen()`
+
+Located in `utils.h`. Returns an Eigen matrix given an arma matrix.
+
+### Arguments
+
+* `const arma::mat& armaMatrix`: arma matrix to be converted
+
+### Output
+
+* `Eigen::MatrixXd eigenMatrix`: Eigen equivalent to `armaMatrix`
+
+## `double update_average()`
+
+Located in `utils.h`. Incorporates a new sample into a reported average.
+
+### Arguments
+
+* `int prev_val`: previous reported average
+* `int new_val`: value to be incorporated into the updated average
+* `n_samples`: number of samples used to calculate `prev_val`
+
+### Output
+
+* `double`: updated average value with `new_val` incorporated
+
+## `arma::mat position_vector_to_matrix()`
+
+Located in `utils.h`. Converts a list of x,y coordinates into a matrix.
+
+### Arguments
+
+* `std::vector<double> positions`: list of positions with x values at even indices, y values at odd indices
+
+### Output
+
+* `arma::mat positions_mat`: matrix of size `(2, positions.size() / 2)`. first row holds the x positions, second row holds the y positions.
+
+## `void add_position_history()`
+
+Located in `utils.h`. Adds a new value to a matrix containing previous positions. If the matrix is value, the oldest value is overwritten.
+
+### Arguments
+
+* `arma::mat& position_history`: reference to positions history matrix. This function will change its value.
+* `arma::mat positions`: positions matrix. only the first column is added to `position_history`
+* `std::binary_semaphore* update_positions`: pointer to semaphore controlling access to `position_history`
+
+### Output
+
+* None. Updates value of `position_history` by shifting all entries to the right, then overwriting the first column with the first column in `positions`.
+
+## `arma::mat get_kmeans_positions()`
+
+Located in `utils.h`. Runs kmeans clustering on a matrix of positions.
+
+### Arguments
+
+* `const arma::mat& positions_mat`: matrix of positions
+
+### Output
+
+* `arma::mat centroids`: positions of centroids given by kmeans clustering
+
+## `arma::mat get_dbscan_positions()`
+
+Located in `utils.h`. Runs dbscan clustering on a matrix of positions.
+
+### Arguments
+
+* `const arma::mat& positions_mat`: matrix of positions
+* `double eps`: epsilon value for DBSCAN
+
+### Output
+
+* `arma::mat centroids`: positions of centroids given by DBSCAN clustering. If no clusters are found, this function returns `positions_mat`.
+
+## `arma::mat run_tracker()`
+
+Located in `utils.h`. Runs the event tracking algorithm on a list of event data.
+
+### Arguments
+
+* `std::vector<double> events`: event data to be processed. List in form of `ts_0, x_0, y_0, pol_0, ts_1, x_1, y_1, pol_1,...`
+* `double dt`: integration time for the algorithm in milliseconds
+* `DBSCAN_KNN T`: tracking algorithm
+* `bool enable_tracking`: boolean to toggle tracking algorithm
+
+### Output
+
+* `arma::mat positions`: result of tracking algorithm with x positions in the first row and corresponding y positions in the second row
+
+## `arma::mat get_position()`
+
+Located in `utils.h`. Processes the positions returned from the EBS tracking algorithm into potential positions to point the stage.
+
+### Arguments
+
+* `const std::string& method`: method to find stage position candidates. Current possible values are `"median"`, `"median-history"`, `"median-linearity"`, `"dbscan"`, `"dbscan-history"`, and `"kmeans"`. See thesis for a description of these methods.
+* `arma::mat& positions`: positions from the tracking algorithm
+* `arma::mat& previous_positions`: previous results of this function to be used in methods that incorporate position history
+* `double eps`: epsilon value to be used in DBSCAN clustering
+* `std::binary_semaphore* update_positions`: pointer to semaphore controlling access to `previous_positions`
+
+### Output
+
+* `arma::mat positions`: results of the provided method
+
+## `void update_window()`
+
+Located in `utils.h`. Updates the given display window with a new frame.
+
+### Arguments
+
+* `const std::string& winname`: name of window to be updated
+* `const cv::Mat& cvmat`: new frame to display
+
+### Output
+
+* None
+
+## `void saveImage()`
+
+Located in `videos.h`. Saves a `cv::Mat` at the provided directory as a JPEG.
+
+### Arguments
+
+* `const cv::Mat& frame`: frame to be saved
+* `const std::string& folderPath`: path to desired folder
+* `const std::string& fileName`: desired file name
+
+### Output
+
+* None
+
+## `int extractFileNameAsInt()`
+
+Located in `videos.h`. Assuming a file is named with a number, returns the file name as an integer.
+
+### Arguments
+
+* `const std::string& filePath`: path to a file
+
+### Output
+
+* `int`: file name as an integer
+
+## `std::pair<int, int> getMinMaxTimes()`
+
+Located in `videos.h`. Given a list of file paths where the files are named with numbers, return the minimum and maximum numbers as a pair.
+
+### Arguments
+
+* `const std::vector<std::string>& file_paths`: List of file paths
+
+### Output
+
+* `std::pair<int, int>`: (min, max)
+
+## `void createVideoFromImages()`
+
+Located in `videos.h`. Makes an MP4 video from a directory of images.
+
+### Arguments
+
+* `const std::string& directoryPath`: target directory. Should be filled with images. Each image should be named with a number that corresponds to time in milliseconds since the start of the program when the image was captured.
+* `const std::string& outputPath`: output path for the video
+* `double fps`: desired FPS for the output video
+
+### Output
+
+* None
+
+
 # Main Functions
 
 # Workflow
