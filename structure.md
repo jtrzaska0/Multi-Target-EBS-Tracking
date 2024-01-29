@@ -82,6 +82,7 @@ Contains several class definitions and helper functions used throughout the proj
 ## `videos.h`
 
 Contains helper functions related to saving images and creating videos:
+
 * `void saveImage()`
 * `int extractFileNameAsInt()`
 * `std::pair<int, int> getMinMaxTimes()`
@@ -90,6 +91,7 @@ Contains helper functions related to saving images and creating videos:
 ## `main.cpp`
 
 In addition to `int main()`, this file contains helper functions related to directory manipulation:
+
 * `bool directoryExists()`
 * `bool deleteDirectory()`
 * `bool makeDirectory()`
@@ -98,18 +100,19 @@ In addition to `int main()`, this file contains helper functions related to dire
 
 ## `StageCam`
 
-This object handles connecting to and reading data from an Allied Vision USB camera. The constructor 
+This object handles connecting to and reading data from an Allied Vision USB camera. The constructor
 (`StageCam(int width, int height)`) sets the size of output images in pixels. When the `StageCam` object is constructed,
 the `aquire()` function is called to run on a separate thread. This function connects to the first available camera and
-begins continuous image acquisition. The `acquire()` function will run until `disconnect()` is called. When a new frame 
-is obtained, it is stored in the `last_frame` variable as a `cv::Mat`. It can be accessed using the `get_frame()` 
+begins continuous image acquisition. The `acquire()` function will run until `disconnect()` is called. When a new frame
+is obtained, it is stored in the `last_frame` variable as a `cv::Mat`. It can be accessed using the `get_frame()`
 method.
 
 ## `ProcessingInit`
 
 This object consolidates important information into a single datatype in order to reduce the number of arguments
-required in several functions throughout the program. The following variables can be accessed through the 
+required in several functions throughout the program. The following variables can be accessed through the
 `ProcessingInit` object:
+
 * `float dt`: integration time in ms
 * `bool enable_tracking`: true if EBS tracking algorithm is enabled
 * `int Nx`: horizontal pixels on EBS detector
@@ -124,9 +127,12 @@ required in several functions throughout the program. The following variables ca
 * `bool enable_stage`: true if stage is enabled
 * `double hfovx`: horizontal EBS HFoV in radians
 * `double hfovy`: vertical EBS HFoV in radians
-* `double offset_x`: x offset from stage center of rotation to center of EBS detector in meters (see thesis for geometry)
-* `double offset_y`: y offset from stage center of rotation to center of EBS detector in meters (see thesis for geometry)
-* `double offset_z`: z offset from stage center of rotation to center of EBS detector in meters (see thesis for geometry)
+* `double offset_x`: x offset from stage center of rotation to center of EBS detector in meters (see thesis for
+  geometry)
+* `double offset_y`: y offset from stage center of rotation to center of EBS detector in meters (see thesis for
+  geometry)
+* `double offset_z`: z offset from stage center of rotation to center of EBS detector in meters (see thesis for
+  geometry)
 * `double arm`: distance from stage center of rotation to center of FBS detector in meters (see thesis for geometry)
 * `int pan_offset`: pan systematic error in steps
 * `int tilt_offset`: tilt systematic error in steps
@@ -143,7 +149,7 @@ required in several functions throughout the program. The following variables ca
 ## `Buffers`
 
 The `Buffers` object holds the `PacketQueue` and `prev_positions` variables. `PacketQueue` is a lock-free SPSC queue
-from the Boost library. Event packets read from the EBS are pushed into this queue in the form of `std::vector<double>` 
+from the Boost library. Event packets read from the EBS are pushed into this queue in the form of `std::vector<double>`
 to await for processing with the tracking algorithm.
 
 `prev_positions` is an `arma::mat` of size (2, `history_size`). It stores previous object positions, which may be used
@@ -153,7 +159,7 @@ when determining the next object position.
 
 This object implements a simple PID controller. It is constructed with the three proportionality constants, as well as
 lower and upper bounds for the result. The `calculate()` method performs the PID calculation given the setpoint, current
-position, and time interval since the last call. Error does not accumulate if the result is outside the given 
+position, and time interval since the last call. Error does not accumulate if the result is outside the given
 boundaries. The gains can be updated with the `update_gains()` method, and the accumulated error can be reset with
 `reset()`.
 
@@ -161,9 +167,10 @@ boundaries. The gains can be updated with the `update_gains()` method, and the a
 
 The `StageController` object is responsible for handling stage movement and logging. It works similarly to `StageCam`
 in that it launches a control loop on a separate thread, which will run until the `shutdown()` method is called. The
-`StageController` object handles pan and tilt commands simultaneously. 
+`StageController` object handles pan and tilt commands simultaneously.
 
 The constructor takes the following arguments:
+
 * `double kp_coarse`: proportional gain for coarse tracking
 * `double ki_coarse`: integral gain for coarse tracking
 * `double kd_coarse`: derivative gain for coarse tracking
@@ -189,7 +196,7 @@ The constructor takes the following arguments:
 Motion control is performed in the `ctrl_loop()` function. While the connection is active, the user can adjust the
 pan and tilt offset by pressing the arrow keys. If `pid` is true, motion commands are calculated using `PIDController`
 objects for the pan and tilt directions. Otherwise, the stage moves directly to a given setpoint. A motion command is
-only issued if a certain time has passed since the last command (`update_time`) and the motion is large enough 
+only issued if a certain time has passed since the last command (`update_time`) and the motion is large enough
 (`update_thres`). If logging is enabled, the motion command is written to a CSV with the elapsed time and whether fine
 or coarse tracking was active.
 
@@ -199,20 +206,20 @@ tracking is active, calling `update_setpoints()` does nothing. Likewise, `increm
 values to the current pan and tilt setpoints. This is used during fine tracking. If fine tracking is not active, calling
 `increment_setpoints()` does nothing.
 
-The `activate_fine()` and `deactive_fine()` methods must be called accordingly when fine tracking is 
+The `activate_fine()` and `deactive_fine()` methods must be called accordingly when fine tracking is
 activated/deactivated in the main program.
 
 **Note 1:** Pan/tilt overshoot is a value (in steps) added to the pan/tilt setpoints to account for object motion during
 tracking. It is calculated by multiplying the current stage velocity in steps/ms by the user-provided values of
-`fine_time` and `coarse_time`. Overshoot is only added if the original change in position is sufficiently small (less 
+`fine_time` and `coarse_time`. Overshoot is only added if the original change in position is sufficiently small (less
 than `overshoot_thres`). Ideal values for `fime_time` and `coarse_time` will depend on object distance, speed, and
-trajectory. Overshoot corrections can be disabled by setting `fine_time` and `coarse_time` to 0 or by setting 
+trajectory. Overshoot corrections can be disabled by setting `fine_time` and `coarse_time` to 0 or by setting
 `overshoot_thres` to 0.
 
 ## `EventInfo`
 
 The `EventInfo` object stores an `event_image` and `event_string` variable. `event_image` is a `cv::Mat` which
-represents an event packet as a grayscale image. `event_string` is a string (ts, x, y, pol) of all events in the packet, 
+represents an event packet as a grayscale image. `event_string` is a string (ts, x, y, pol) of all events in the packet,
 which is later written to a CSV if logging is enabled.
 
 ## `WindowInfo`
@@ -320,7 +327,8 @@ Located in `pointing.h`. Returns polar angle of an object in frame. See thesis f
 
 ## `double get_phi_prime()`
 
-Located in `pointing.h`. Returns azimuthal angle of an object in frame with respect to the stage's center of rotation. See thesis for figures depicting geometry.
+Located in `pointing.h`. Returns azimuthal angle of an object in frame with respect to the stage's center of rotation.
+See thesis for figures depicting geometry.
 
 ### Arguments
 
@@ -335,7 +343,8 @@ Located in `pointing.h`. Returns azimuthal angle of an object in frame with resp
 
 ## `double get_theta_prime()`
 
-Located in `pointing.h`. Returns the polar angle with respect to the stage's center of rotation necessary to center an object in the EBS frame on the stage-mounted camera. See thesis for figures depicting geometry.
+Located in `pointing.h`. Returns the polar angle with respect to the stage's center of rotation necessary to center an
+object in the EBS frame on the stage-mounted camera. See thesis for figures depicting geometry.
 
 ### Arguments
 
@@ -349,11 +358,13 @@ Located in `pointing.h`. Returns the polar angle with respect to the stage's cen
 
 ### Output
 
-* `double`: polar angle in radians with respect to the stage's center of rotation necessary to center an object in the EBS frame on the stage-mounted camera
+* `double`: polar angle in radians with respect to the stage's center of rotation necessary to center an object in the
+  EBS frame on the stage-mounted camera
 
 ## `int get_motor_position()`
 
-Located in `pointing.h`. Returns the motor position in steps corresponding to a given target angle. Works for both tilt and pan.
+Located in `pointing.h`. Returns the motor position in steps corresponding to a given target angle. Works for both tilt
+and pan.
 
 ### Arguments
 
@@ -415,11 +426,13 @@ Located in `utils.h`. Converts a list of x,y coordinates into a matrix.
 
 ### Output
 
-* `arma::mat positions_mat`: matrix of size `(2, positions.size() / 2)`. first row holds the x positions, second row holds the y positions.
+* `arma::mat positions_mat`: matrix of size `(2, positions.size() / 2)`. first row holds the x positions, second row
+  holds the y positions.
 
 ## `void add_position_history()`
 
-Located in `utils.h`. Adds a new value to a matrix containing previous positions. If the matrix is value, the oldest value is overwritten.
+Located in `utils.h`. Adds a new value to a matrix containing previous positions. If the matrix is value, the oldest
+value is overwritten.
 
 ### Arguments
 
@@ -429,7 +442,8 @@ Located in `utils.h`. Adds a new value to a matrix containing previous positions
 
 ### Output
 
-* None. Updates value of `position_history` by shifting all entries to the right, then overwriting the first column with the first column in `positions`.
+* None. Updates value of `position_history` by shifting all entries to the right, then overwriting the first column with
+  the first column in `positions`.
 
 ## `arma::mat get_kmeans_positions()`
 
@@ -454,7 +468,8 @@ Located in `utils.h`. Runs dbscan clustering on a matrix of positions.
 
 ### Output
 
-* `arma::mat centroids`: positions of centroids given by DBSCAN clustering. If no clusters are found, this function returns `positions_mat`.
+* `arma::mat centroids`: positions of centroids given by DBSCAN clustering. If no clusters are found, this function
+  returns `positions_mat`.
 
 ## `arma::mat run_tracker()`
 
@@ -462,24 +477,30 @@ Located in `utils.h`. Runs the event tracking algorithm on a list of event data.
 
 ### Arguments
 
-* `std::vector<double> events`: event data to be processed. List in form of `ts_0, x_0, y_0, pol_0, ts_1, x_1, y_1, pol_1,...`
+* `std::vector<double> events`: event data to be processed. List in form
+  of `ts_0, x_0, y_0, pol_0, ts_1, x_1, y_1, pol_1,...`
 * `double dt`: integration time for the algorithm in milliseconds
 * `DBSCAN_KNN T`: tracking algorithm
 * `bool enable_tracking`: boolean to toggle tracking algorithm
 
 ### Output
 
-* `arma::mat positions`: result of tracking algorithm with x positions in the first row and corresponding y positions in the second row
+* `arma::mat positions`: result of tracking algorithm with x positions in the first row and corresponding y positions in
+  the second row
 
 ## `arma::mat get_position()`
 
-Located in `utils.h`. Processes the positions returned from the EBS tracking algorithm into potential positions to point the stage.
+Located in `utils.h`. Processes the positions returned from the EBS tracking algorithm into potential positions to point
+the stage.
 
 ### Arguments
 
-* `const std::string& method`: method to find stage position candidates. Current possible values are `"median"`, `"median-history"`, `"median-linearity"`, `"dbscan"`, `"dbscan-history"`, and `"kmeans"`. See thesis for a description of these methods.
+* `const std::string& method`: method to find stage position candidates. Current possible values
+  are `"median"`, `"median-history"`, `"median-linearity"`, `"dbscan"`, `"dbscan-history"`, and `"kmeans"`. See thesis
+  for a description of these methods.
 * `arma::mat& positions`: positions from the tracking algorithm
-* `arma::mat& previous_positions`: previous results of this function to be used in methods that incorporate position history
+* `arma::mat& previous_positions`: previous results of this function to be used in methods that incorporate position
+  history
 * `double eps`: epsilon value to be used in DBSCAN clustering
 * `std::binary_semaphore* update_positions`: pointer to semaphore controlling access to `previous_positions`
 
@@ -499,6 +520,118 @@ Located in `utils.h`. Updates the given display window with a new frame.
 ### Output
 
 * None
+
+## `WindowInfo calculate_window()`
+
+Located in `utils.h`. Generates a `WindowInfo` object using event information and tracking algorithm results. This
+object
+contains an `EventInfo` object, the results of `get_position()`, the previous stage position, and the number of samples
+used in the average position calculation (if applicable).
+
+The image stored in `EventInfo` is updated to display blue boxes around direct results from the tracking algorithm and a
+red boxes around the results of `get_position()`. The size of these boxes if set by `MAGNIFICATION` in `config.json`. If
+verbose output is enabled, additional text is added to the window as well.
+
+### Arguments
+
+* `const ProcessingInit& proc_init`: `ProcessingInit` object - this function needs access
+  to `mag`, `Nx`, `Ny`, `enable_tracking`, `position_method`, `eps`, `report_average`, `verbose`,
+  and `enable_event_log`.
+* `const EventInfo& event_info`: `EventInfo` object containing the image to be edited
+* `arma::mat positions`: results from the tracking algorithm
+* `arma::mat& prev_positions`: previous object positions to be used with `get_position()` if needed
+* `std::binary_semaphore* update_positions`: pointer to semaphore controlling access to `prev_positions`
+* `int prev_x`: previous x coordinate of the object
+* `int prev_y`: previous y coordinate of the object
+* `int n_samples`: number of samples used in the average calculation
+* `std::chrono::time_point<std::chrono::high_resolution_clock> start`: time point when system was initialized - used for
+  logging
+
+### Output
+
+* `WindowInfo info`: The information in this `WindowInfo` object is used to display results of the tracking algorithm,
+  move the stage, and log event data/stage position information.
+
+## `EventInfo read_packets()`
+
+Located in `utils.h`. Creates an `EventInfo` object from a list of event data. This object contains an image to
+visualize the event data and a string formatted to write the event data in a CSV.
+
+### Arguments
+
+* `std::vector<double> events`: list of event data from the EBS
+* `int Nx`: number of horizontal pixels on the EBS
+* `int Ny`: number of vertical pixels on the EBS
+* `bool enable_event_log`: whether to log event data
+
+### Output
+
+* `EventInfo info`: This `EventInfo` object is passed to `calculate_window()` for further processing.
+
+## `WindowInfo process_packet()`
+
+Located in `utils.h`. This function takes a list of event data through the entire processing pipeline to create a
+`WindowInfo` object. The event data is passed to `read_packets()` and `run_tracker()`, both of which are run
+asynchronously. When both are completed, the results are passed to `calculate_window()` to generate the `WindowInfo`
+object.
+
+### Arguments
+
+* `const std::vector<double>& events`: list of event data from the EBS
+* `const DBSCAN_KNN& T`: tracking algorithm
+* `const ProcessingInit& proc_init`: `ProcessingInit` object for `read_packets()`, `run_tracker()`,
+  and `calculate_window()`
+* `const WindowInfo& prev_window`: Previous `WindowInfo` object used for `prev_x`, `prev_y`, and `n_samples`
+* `arma::mat& prev_positions`: previous object positions to be used with `get_position()` if needed
+* `std::binary_semaphore* update_positions`: pointer to semaphore controlling access to `prev_positions`
+* `std::chrono::time_point<std::chrono::high_resolution_clock> start`: time point when system was initialized - used for
+  logging
+
+### Output
+
+* `WindowInfo tracking_info`: The information in this `WindowInfo` object is used to display results of the tracking
+  algorithm, move the stage, and log event data/stage position information.
+
+## `StageInfo move_stage()`
+
+Located in `utils.h`. This function moves the stage by updating the setpoints in a `StageController` object. A
+`StageInfo` object is returned, which holds the pan/tilt location of the move.
+
+### Arguments
+
+* `StageController& ctrl`: reference to `StageController` object
+* `const ProcessingInit& proc_init`: `ProcessingInit` object for HFoV, system geometry, and systematic errors
+* `arma::mat positions`: Potential object locations. Currently, the stage is hard-coded to point to the first entry
+* `int prev_pan`: last pan position of the stage in steps
+* `int prev_tilt`: last tilt position of the stage in steps
+
+### Output
+
+* `StageInfo info`: The information in this `StageInfo` was originally used for logging, but that functionality was
+  moved into the `StageController` object.
+
+## `std::tuple<WindowInfo, StageInfo> read_future()`
+
+Located in `utils.h`. This function extracts the results of an asynchronous call to `process_packet()`. After the
+`WindowInfo` object is read, it updates the display window, writes position and event information to their respective
+files (if enabled), saves the image, and calls `move_stage()`. It returns a tuple containing the `WindowInfo` object
+from `process_packet()` and `StageInfo` object from `move_stage()`.
+
+### Arguments
+
+* `StageController& ctrl`: reference to `StageController` object
+* `std:::future<WindowInfo>& future` reference to an expected result from an asynchronous call to `process_packet()`
+* `const ProcessingInit& proc_init`: `ProcessingInit` object for `move_stage()`
+* `const StageInfo& prevStage`: previous `StageInfo` object
+* `std::ofstream& detectionsFile`: reference to stream for the detections CSV
+* `std::ofstream& eventFile`: reference to stream for the events CSV
+* `std::chrono::time_point<std::chrono::high_resolution_clock> start`: time point when system was initialized - used for
+  logging
+
+### Output
+
+* `StageInfo info`: The information in this `StageInfo` was originally used for logging, but that functionality was
+  moved into the `StageController` object.
 
 ## `void saveImage()`
 
@@ -528,7 +661,8 @@ Located in `videos.h`. Assuming a file is named with a number, returns the file 
 
 ## `std::pair<int, int> getMinMaxTimes()`
 
-Located in `videos.h`. Given a list of file paths where the files are named with numbers, return the minimum and maximum numbers as a pair.
+Located in `videos.h`. Given a list of file paths where the files are named with numbers, return the minimum and maximum
+numbers as a pair.
 
 ### Arguments
 
@@ -544,7 +678,8 @@ Located in `videos.h`. Makes an MP4 video from a directory of images.
 
 ### Arguments
 
-* `const std::string& directoryPath`: target directory. Should be filled with images. Each image should be named with a number that corresponds to time in milliseconds since the start of the program when the image was captured.
+* `const std::string& directoryPath`: target directory. Should be filled with images. Each image should be named with a
+  number that corresponds to time in milliseconds since the start of the program when the image was captured.
 * `const std::string& outputPath`: output path for the video
 * `double fps`: desired FPS for the output video
 
@@ -552,7 +687,16 @@ Located in `videos.h`. Makes an MP4 video from a directory of images.
 
 * None
 
-
 # Main Functions
+
+## `main()`
+
+## `int read_xplorer()`
+
+## `int read_davis()`
+
+## `void processing_threads()`
+
+## `void camera_thread()`
 
 # Workflow
