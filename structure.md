@@ -719,7 +719,7 @@ Each list is pushed to the queue in the `Buffers` object for processing.
 
 This function blocks `main()` until the user exits.
 
-## Arguments
+### Arguments
 
 * `Buffers& buffers`: reference to `Buffers` object to store data for processing
 * `const bool debug`: whether to print additional statements for debugging purposes
@@ -729,7 +729,7 @@ This function blocks `main()` until the user exits.
 * `std::chrono::time_point<std::chrono::high_resolution_clock> start`: time point when program started
 * `bool& active`: reference to global shutdown variable - `active` becomes false when the user presses the space key
 
-## Output
+### Output
 
 * `int`: 0 if function exits successfully
 
@@ -801,3 +801,46 @@ This function is called on a separate thread and runs until the user presses the
 * None
 
 # Workflow
+
+## Overview
+
+The program begins with `main()`, which first reads the `config.json` file. See Appendix A in the thesis for a
+description of the settings. Then, the `DBSCAN_KNN` tracker is initialized. If the stage is enabled, the program
+attempts to make a connection and sets various settings from the `config.json` file. The start time is set after this
+connection, which is referenced throughout the program for logging purposes. Then, the `StageController` object is
+initialized. This object is used to make motion commands to the stage, and is generally passed by reference. The
+`StageCam` object is initialized next, which begins communication with the frame-based camera. Important data is stored
+in a `ProcessingInit` object, which is passed to several functions deeper in the program. Then, `processing_threads()`
+and `camera_thread()` are called to run on separate threads. Depending on the EBS in use, `read_xplorer()` or
+`read_davis()` is then called on the main thread. This keeps the program running until the user presses the space bar.
+When the user presses the space bar, all threads are joined and the stage is returned to its home position. Then, two
+videos are generated from images saved over the course of the run (one from the EBS feed and one from the frame-based
+feed).
+
+## EBS Dataflow
+
+Event data is sent from the device in packets. In `read_xplorer()` and `read_davis()`, each packet is converted to a
+list of doubles (`std::vector<double>`), and the list is pushed to the back of the queue in the `Buffers` object. The
+`processing_threads()` function runs concurrently, checking for new event data in the queue to process. When a list of
+event data is received, it is processed with the `process_packet()` function. This function takes a list of event data
+through the entire processing pipeline to create a `WindowInfo` object. It passes the data to `read_packets()` to
+generate a visualization of the events and `run_tracker()` to run the tracking algorithm. Both of these calls are made
+asynchronously. When both are completed, the results are passed to `calculate_window()` to generate the `WindowInfo`
+object. The `WindowInfo` object contains potential object locations for the stage and an image showing the tracking
+results.
+
+Results from `process_packet()` are processed in `read_future()`. This function updates the display, writes data to
+files for logging, and calls `move_stage()` to issue a motion command.
+
+## Frame-based Camera Dataflow
+
+When the `StageCam` object is initialized, it opens a separate thread that reads frames from the camera. The
+`camera_thread()` function runs concurrently, and it accesses the most recent frame from the camera using a reference
+to the `StageCam` object. If fine tracking is disabled, each frame is simply displayed on the screen and saved to a
+directory.
+
+If fine tracking is enabled, each frame is run through a pre-trained neural network provided by the user. If the neural
+network makes a detection, the bounding box with the highest confidence is used to initialize a KCF tracker. The KCF
+tracker is used to process subsequent frames until the object is lost or the track is cancelled by the user. While the
+KCF tracker is active, a call to the `StageController` object is made to make it ignore commands from
+`processing_threads()`. When the fine track is lost, the coarse track takes control again.
