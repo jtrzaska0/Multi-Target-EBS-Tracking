@@ -1,7 +1,8 @@
 # Introduction
 
 This document describes the structure of the tracking software. The code's objects, helper functions, main functions,
-and workflow.
+and workflow. For notes that reference the thesis, it can be found in
+the [UA Campus Repository](https://repository.arizona.edu/handle/10150/669594).
 
 # Files
 
@@ -691,12 +692,112 @@ Located in `videos.h`. Makes an MP4 video from a directory of images.
 
 ## `main()`
 
+Parses the configuration file and launches separate threads for stage control, data processing, and reading from both
+the EBS and frame-based cameras. After the user shuts down the system, the stage is returned to its home position, and
+a video is created from the saved EBS and frame-based images. See Appendix A in the thesis for a description of the
+settings in the configuration file.
+
+### Arguments
+
+Four arguments must be provided when launching the program:
+
+* `argv[1]`: `-p`
+* `argv[2]`: `tcp:<FLIR stage IP address>`
+* `argv[3]`: Path to `config.json`
+* `argv[4]`: Path to ONNX file for drone detection
+
+### Output
+
+* `int`: 0 if program exited successfully
+
 ## `int read_xplorer()`
+
+Connects to a DVXplorer and applies the noise filter settings from `config.json`. Continuously reads from the EBS until
+the space key is pressed. Events are received from the EBS in packets. Each packet is converted to a list of doubles
+(`std::vector<double>`). This list holds all the packet's event data in the form `ts_0, x_0, y_0, pol_0, ts_1, ...`.
+Each list is pushed to the queue in the `Buffers` object for processing.
+
+This function blocks `main()` until the user exits.
+
+## Arguments
+
+* `Buffers& buffers`: reference to `Buffers` object to store data for processing
+* `const bool debug`: whether to print additional statements for debugging purposes
+* `const json& noise_params`: Noise filter settings of `config.json`
+* `bool enable_filter`: whether to enable the noise filter
+* `const std::string& file`: path to output file
+* `std::chrono::time_point<std::chrono::high_resolution_clock> start`: time point when program started
+* `bool& active`: reference to global shutdown variable - `active` becomes false when the user presses the space key
+
+## Output
+
+* `int`: 0 if function exits successfully
 
 ## `int read_davis()`
 
+Identical to `read_explorer()`, except for communicating with a DAVIS346. This function uses some additional noise
+filters that are unavailable to the DVXplorer.
+
 ## `void processing_threads()`
 
+This function processes the event data stored in `Buffers`. It runs each set of data through the entire analysis
+pipeline by making asynchronous calls to `process_packet()`, which results in stage motion and updates to the display
+window. It also opens/closes the CSV files storing event data and detections data, which are populated if logging is
+enabled.
+
+Data processing is split among three asynchronous threads: A, B, and C. Event data is cyclically placed in thread A,
+then thread B, then thread C, then back to thread A as it arrives. Although the three threads run asynchronously, the
+results are read in the
+order they are received. For example, thread A will always contain event data that occurred before the event data in
+thread B. If thread B finishes before thread A, the program will wait for thread A to finish before reading the results
+of thread B. This ensures that stage motion and data storage occurs in the correct order.
+
+This function runs on a separate thread until the user presses the space bar.
+
+### Arguments
+
+* `StageController& ctrl`: reference to `StageController` object
+* `Buffers& buffers`: reference to `Buffers` object
+* `const DBSCAN_KNN& T`: tracking algorithm
+* `const ProcessingInit& proc_init`: `ProcessingInit` object to pass several important values through the workflow
+* `std::chrono::time_point<std::chrono::high_resolution_clock> start`: time point when program started
+* `const bool debug`: whether to print additional statements for debugging purposes
+* `const bool& active`: reference to global shutdown variable
+
+### Output
+
+* None
+
 ## `void camera_thread()`
+
+This function processes data from the frame-based camera and manages fine tracking. While no drone is detected, the
+function reads the most recent frame from the camera and runs it through a neural network (provided through a
+pre-trained ONNX file). If an object is found, the function initializes a KCF tracker using the bounding box with the
+highest confidence. Then, fine track mode is enabled on the `StageController` object, meaning commands issued from this
+function will take priority over commands sent from the `processing_threads()` function. Fine tracking can be toggled by
+pressing the `E` key, and the KCF tracker can be reset by pressing the `Escape` key. If fine tracking is disabled, the
+function simply grabs and displays the most recent frame from the camera without any processing.
+
+This function is called on a separate thread and runs until the user presses the space key.
+
+### Arguments
+
+* `StageCam& cam`: reference to `StageCam` object for grabbing frames
+* `StageController& ctrl`: reference to `StageController` object
+* `int height`: height of output frames in pixels
+* `int width`: width of output frames in pixels
+* `double hfovx`: frame-based camera's horizontal HFoV in radians
+* `double hfovy`: frame-based camera's vertical HFoV in radians
+* `cont std::string& onnx_loc`: path to ONNX file
+* `bool enable_stage`: whether stage is enabled
+* `bool enable_dnn`: whether processing with neural network is enabled - can be toggled with the `E` key
+* `std::chrono::time_point<std::chrono::high_resolution_clock> start`: time point when program started
+* `double confidence_thres`: confidence threshold for detection
+* `const bool debug`: whether to print additional statements for debugging
+* `const bool& active`: reference to global shutdown variable
+
+### Output
+
+* None
 
 # Workflow
