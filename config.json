@@ -5,27 +5,59 @@
     "ENABLE_TRACKING": true,
     "COMMAND_METHOD": "dbscan-history",
     "EPSILON": 100,
-    "MAGNIFICATION": 0.0645,
+    "MAGNIFICATION": {
+        "0": 0.0645
+    },
+
     "ENABLE_LOGGING": true,
     "EVENT_FILEPATH": "data",
-    "VIDEO_FPS": 30,
+    "VIDEO_FPS": {
+        "0": 30
+    },
+
     "REPORT_AVERAGE": false,
     "HISTORY_SIZE": 12,
-    "KP_COARSE": 0.8,
-    "KI_COARSE": 0.002,
-    "KD_COARSE": 0.002,
-    "KP_FINE": 360.0,
-    "KI_FINE": 0.05,
-    "KD_FINE": 0.05,
-    "ENABLE_DNN": false,
+    "KP_COARSE": {
+        "0": 0.8
+    },
+
+    "KI_COARSE": {
+        "0": 0.002
+    },
+
+    "KD_COARSE": {
+        "0": 0.002
+    },
+
+    "KP_FINE": {
+        "0": 360.0
+    },
+
+    "KI_FINE": {
+        "0": 0.05
+    },
+
+    "KD_FINE": {
+        "0": 0.05
+    },
+
+    "ENABLE_DNN": {
+        "0": false
+    },
+
     "CONFIDENCE": 0.5,
-    "ENABLE_PID": false,
+    "ENABLE_PID": {
+        "0": false
+    },
+
     "EBS_EPSILON": 12,
     "EBS_NUM_PTS": 3,
     "EBS_TAU": 1.2,
+    "NUM_STAGES": 1,
     "VERBOSE": false,
     "DEBUG": false
   },
+
   "NOISE_FILTER": {
     "ENABLE_FILTER": true,
     "DAVIS_BACKGROUND_ACTIVITY_TIME": 2,
@@ -43,39 +75,150 @@
     "CAER_HOTPIXEL_ENABLE": true,
     "CAER_HOTPIXEL_LEARN": true
   },
+
   "STAGE_SETTINGS": {
-    "ENABLE_STAGE": true,
-    "FOCAL_LENGTH": 0.006,
-    "OFFSET_X": 0.03,
-    "OFFSET_Y": 0.13,
-    "OFFSET_Z": -0.10,
-    "ARM": 0.115,
-    "OBJECT_DIST": 50,
-    "FOCUS_DIST": 1500,
-    "PAN_OFFSET": 0,
-    "TILT_OFFSET": 0,
-    "START_PAN_ANGLE": -1.57079632679,
-    "END_PAN_ANGLE": 1.57079632679,
-    "START_TILT_ANGLE": -0.5235988,
-    "END_TILT_ANGLE": 0.5235988,
-    "STAGE_UPDATE": 0,
-    "UPDATE_TIME": 0,
-    "MIN_TILT_POS": -1500,
-    "MAX_TILT_POS": 1500,
-    "MIN_PAN_POS": -4500,
-    "MAX_PAN_POS": 4500,
-    "MIN_TILT_SPEED": 6000,
-    "MAX_TILT_SPEED": 9000,
-    "MIN_PAN_SPEED": 6000,
-    "MAX_PAN_SPEED": 9000,
-    "PAN_ACC": 9000,
-    "TILT_ACC": 9000,
-    "NFOV_FOCAL_LENGTH": 0.100,
-    "NFOV_NPX_HORIZ": 2592,
-    "NFOV_NPX_VERT": 1944,
-    "NFOV_PX_PITCH": 0.0000022,
-    "COARSE_OVERSHOOT_TIME": 0.0,
-    "FINE_OVERSHOOT_TIME": 0.00,
-    "OVERSHOOT_THRESHOLD": 0
+    "ENABLE_STAGE": {
+        "0": true
+    },
+
+    "TCP_IP_INIT": {
+        "0": "tcp:169.254.104.141"
+    },
+
+    "FOCAL_LENGTH": {
+        "0": 0.006
+    },
+
+    "OFFSET_X": {
+        "0": 0.03
+    },
+
+    "OFFSET_Y": {
+        "0": 0.13
+    },
+
+    "OFFSET_Z": {
+        "0": -0.10
+    },
+
+    "ARM": {
+        "0": 0.115
+    },
+
+    "OBJECT_DIST": {
+        "0": 50
+    },
+
+    "FOCUS_DIST": {
+        "0": 1500
+    },
+
+    "PAN_OFFSET": {
+        "0": 0
+    },
+
+    "TILT_OFFSET": {
+        "0": 0
+    },
+
+    "START_PAN_ANGLE": {
+        "0": -1.57079632679
+    },
+
+    "END_PAN_ANGLE": {
+        "0": 1.57079632679
+    },
+
+    "START_TILT_ANGLE": {
+        "0": -0.5235988
+    },
+
+    "END_TILT_ANGLE": {
+        "0": 0.5235988
+    },
+
+    "STAGE_UPDATE": {
+        "0": 0
+    },
+
+    "UPDATE_TIME": {
+        "0": 0
+    },
+
+    "MIN_TILT_POS": {
+        "0": -1500
+    },
+
+    "MAX_TILT_POS": {
+        "0": 1500
+    },
+
+    "MIN_PAN_POS": {
+        "0": -4500
+    },
+
+    "MAX_PAN_POS": {
+        "0": 4500
+    },
+
+    "MIN_TILT_SPEED": {
+        "0": 6000
+    },
+
+    "MAX_TILT_SPEED": {
+        "0": 9000
+    },
+
+    "MIN_PAN_SPEED": {
+        "0": 6000
+    },
+
+    "MAX_PAN_SPEED": {
+        "0": 9000
+    },
+
+    "PAN_ACC": {
+        "0": 9000
+    },
+
+    "TILT_ACC": {
+        "0": 9000
+    },
+
+    "NFOV_FOCAL_LENGTH": {
+        "0": 0.100
+    },
+
+    "NFOV_NPX_HORIZ": {
+        "0": 2592
+    },
+
+    "NFOV_NPX_VERT": {
+        "0": 1944
+    },
+
+    "NFOV_PX_PITCH": {
+        "0": 0.0000022
+    },
+
+    "COARSE_OVERSHOOT_TIME": {
+        "0": 0.0
+    },
+
+    "FINE_OVERSHOOT_TIME": {
+        "0": 0.00
+    },
+
+    "OVERSHOOT_THRESHOLD": {
+        "0": 0
+    },
+
+    "CAM_WIDTH": {
+        "0": 640
+    },
+
+    "CAM_HEIGHT": {
+        "0": 480
+    }
   }
 }

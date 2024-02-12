@@ -1,31 +1,38 @@
-#pragma once
+// File     threads.h
+// Summary  Processing threads for EBS and FBS.
+// Authors  Trevor Schlack - Modified by Jacob Trzaska
+# pragma once
 
-#include <atomic>
-#include <chrono>
-#include <csignal>
-#include <queue>
-#include <semaphore>
-#include <boost/lockfree/spsc_queue.hpp>
-#include <nlohmann/json.hpp>
-#include <libcaercpp/devices/dvxplorer.hpp>
-#include <libcaercpp/devices/davis.hpp>
-#include <libcaercpp/filters/dvs_noise.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/tracking.hpp>
-#include <opencv2/dnn.hpp>
-#include "pointing.h"
-#include "utils.h"
-#include "controller.h"
-#include "videos.h"
+// Standard imports
+# include <atomic>
+# include <chrono>
+# include <csignal>
+# include <queue>
+# include <semaphore>
+# include <boost/lockfree/spsc_queue.hpp>
+# include <nlohmann/json.hpp>
+# include <libcaercpp/devices/dvxplorer.hpp>
+# include <libcaercpp/devices/davis.hpp>
+# include <libcaercpp/filters/dvs_noise.hpp>
+# include <opencv2/core.hpp>
+# include <opencv2/highgui/highgui.hpp>
+# include <opencv2/imgproc.hpp>
+# include <opencv2/tracking.hpp>
+# include <opencv2/dnn.hpp>
 
+// Local imports
+# include "pointing.h"
+# include "utils.h"
+# include "controller.h"
+# include "videos.h"
+
+// Namespacing
 using json = nlohmann::json;
-
 static std::atomic_bool globalShutdown(false);
 
+
 class Buffers {
-public:
+    public:
     boost::lockfree::spsc_queue<std::vector<double>> PacketQueue{1024};
     arma::mat prev_positions;
 
@@ -35,6 +42,7 @@ public:
     }
 };
 
+
 static void globalShutdownSignalHandler(int signal) {
     // Simply set the running flag to false on SIGTERM and SIGINT (CTRL+C) for global shutdown.
     if (signal == SIGTERM || signal == SIGINT) {
@@ -42,11 +50,13 @@ static void globalShutdownSignalHandler(int signal) {
     }
 }
 
+
 static void usbShutdownHandler(void *ptr) {
     (void) (ptr); // UNUSED.
 
     globalShutdown.store(true);
 }
+
 
 int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, bool enable_filter, const std::string& file,
                  std::chrono::time_point<std::chrono::high_resolution_clock> start, bool &active) {
@@ -128,6 +138,7 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
         if (packetContainer == nullptr) {
             continue;
         }
+
         auto start_processing = std::chrono::high_resolution_clock::now();
         int eventCount = 0;
         for (auto &packet: *packetContainer) {
@@ -156,18 +167,23 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
                 }
             }
         }
+
         auto stop_processing = std::chrono::high_resolution_clock::now();
         auto processing_duration = std::chrono::duration_cast<std::chrono::microseconds>(stop_processing - start_processing);
         auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start);
         double eventRate = 1000000 * eventCount / (double)processing_duration.count();
+
         rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
+
         if (key_is_pressed(XK_space)) {
             active = false;
         }
+
         if (debug)
             printf("Completed EBS acquisition.\n");
     }
+
     handle.dataStop();
     rateFile.close();
 
@@ -270,13 +286,17 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         if (debug)
             printf("Started EBS acquisition.\n");
+
         std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
+
         if (packetContainer == nullptr) {
             continue;
         }
+
         auto start_processing = std::chrono::high_resolution_clock::now();
         int eventCount = 0;
+
         for (auto &packet: *packetContainer) {
             if (packet == nullptr) {
                 continue; // Skip if nothing there.
@@ -303,18 +323,23 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
                 }
             }
         }
+
         auto stop_processing = std::chrono::high_resolution_clock::now();
         auto processing_duration = std::chrono::duration_cast<std::chrono::microseconds>(stop_processing - start_processing);
         auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start);
         double eventRate = 1000000 * eventCount / (double)processing_duration.count();
+
         rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
+
         if (key_is_pressed(XK_space)) {
             active = false;
         }
+
         if (debug)
             printf("Completed EBS acquisition.\n");
     }
+
     rateFile.close();
     davisHandle.dataStop();
 
@@ -324,77 +349,61 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
     return (EXIT_SUCCESS);
 }
 
-void processing_threads(StageController& ctrl, Buffers& buffers, const DBSCAN_KNN& T, const ProcessingInit& proc_init,
+
+void processing_threads(std::vector<StageController>& ctrl, Buffers& buffers, const DBSCAN_KNN& T, const ProcessingInit& proc_init,
                         std::chrono::time_point<std::chrono::high_resolution_clock> start, const bool debug, const bool& active) {
+    /*
+    Primary processing thread.
+
+    Args:
+        ctrl:      Collection of controllers for each connected stage.
+        T:         DBSCAN_KNN detector and tracker.
+        proc_init: Globally important program parameters.
+        start:     Program start time.
+        debug:     Boolean debug flag.
+        active:    Boolean indicating program status.
+
+    Ret:
+        None.
+
+    Notes:
+        Jacob - I've removed the tri-thread setup hoping that the new laptop has
+        has the performance to keep up with the event packets.
+    */
+
     std::ofstream detectionsFile(proc_init.event_file + "-detections.csv");
     std::ofstream eventFile(proc_init.event_file + "-events.csv");
     std::binary_semaphore update_positions(1);
+
+    std::vector<int> panInit(ctrl.size(), 0);
+    std::vector<int> tiltInit(ctrl.size(), 0);
     WindowInfo prev_trackingInfo;
-    StageInfo prev_stageInfo(0, 0);
+    StageInfo prev_stageInfo(panInit, tiltInit);
+
     while (active) {
         if (debug)
             printf("Started event processing.");
-        bool A_processed = false;
-        bool B_processed = false;
+
         if (buffers.PacketQueue.empty())
             continue;
+
         std::future<WindowInfo> fut_resultA =
                 std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
                            prev_trackingInfo, std::ref(buffers.prev_positions), &update_positions, start);
+
         buffers.PacketQueue.pop();
 
-        fill_processorB:
-        if (!active)
-            continue;
-        if (buffers.PacketQueue.empty()) {
-            if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                A_processed = true;
-                std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
-            }
-            goto fill_processorB;
-        }
-        std::future<WindowInfo> fut_resultB =
-                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
-                           prev_trackingInfo, std::ref(buffers.prev_positions), &update_positions, start);
-        buffers.PacketQueue.pop();
-
-        fill_processorC:
-        if (!active)
-            continue;
-        if (buffers.PacketQueue.empty()) {
-            if (!A_processed && fut_resultA.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                A_processed = true;
-                std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
-            }
-            if (!B_processed && fut_resultB.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                B_processed = true;
-                std::tie(prev_stageInfo, prev_trackingInfo) =
-                        read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
-            }
-            goto fill_processorC;
-        }
-        std::future<WindowInfo> fut_resultC =
-                std::async(std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
-                           prev_trackingInfo, std::ref(buffers.prev_positions), &update_positions, start);
-        buffers.PacketQueue.pop();
-
-        if (!A_processed) {
-            std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
-        }
-        if (!B_processed) {
-            std::tie(prev_stageInfo, prev_trackingInfo) =
-                    read_future(ctrl, fut_resultB, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
-        }
         std::tie(prev_stageInfo, prev_trackingInfo) =
-                read_future(ctrl, fut_resultC, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
+                read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
+
         if (debug)
             printf("Completed event processing.");
     }
+
     detectionsFile.close();
     eventFile.close();
+
+    return;
 }
 
 cv::Mat formatYolov5(const cv::Mat& frame) {
@@ -408,7 +417,33 @@ cv::Mat formatYolov5(const cv::Mat& frame) {
 
 void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, double hfovx, double hfovy,
                    const std::string& onnx_loc, bool enable_stage, bool enable_dnn, std::chrono::time_point<std::chrono::high_resolution_clock> start,
-                   double confidence_thres, const bool debug, const bool &active) {
+                   double confidence_thres, const bool debug, const bool &active, int idx) {
+    /*
+    Frame-based tracking.
+
+    Args:
+        cam:              Stage camera object. Provides images from frame-based sensors.
+        ctrl:             Move the stages.
+        height:           Height of FBS focal-plane arrays.
+        width:            Width of FBS focal-plane arrays.
+        hfovx:            Half FOV in x.
+        hfovy:            Half FOV in y.
+        onnx_loc:         Onnx file for Yolo.
+        enable_stage:     Indiciates whether to enable stage.
+        enable dnn:       Indicates whether to use a neural network.
+        start:            Program start time.
+        confdience_thres: Confidence level required to declare a detection.
+        debug:            Just a debug flag.
+        active:           Indicates whether the system should still be running.
+        idx:              Indicates which camera to use.
+
+    Ret:
+        None.
+
+    Notes:
+        None.
+    */
+
     std::vector<std::string> class_list{"drone"};
     cv::dnn::Net net;
     net = cv::dnn::readNet(onnx_loc);
@@ -417,18 +452,22 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
     while(active && cam.running()) {
         if (debug)
             printf("Started camera acquisition.");
+
         auto frame = cam.get_frame();
         cv::Mat color_frame;
         cv::cvtColor(frame, color_frame, cv::COLOR_GRAY2BGR);
         cv::Rect bbox;
+
         if (key_is_pressed(XK_E)) {
             enable_dnn = !enable_dnn;
             if (enable_dnn)
                 printf("Fine track enabled.\n");
             else
                 printf("Fine track disabled.\n");
+
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+
         if (enable_dnn) {
             if (!ctrl.get_tracker_status()) {
                 cv::Mat input_image = formatYolov5(color_frame);  // making the image square
@@ -532,6 +571,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                     newRect.y = (int)(originalCentroid.y - newRect.height / 2.0);
                     tracker->init(color_frame, newRect);
                 }
+
             } else {
                 bool isTrackingSuccessful = tracker->update(color_frame, bbox);
                 if (isTrackingSuccessful && !key_is_pressed(XK_Escape)) {
@@ -548,11 +588,16 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
                 }
             }
         }
+
+        // Calculate runtime performance.
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         int elapsed = (int)duration.count();
-        saveImage(color_frame, "./camera_images", std::to_string(elapsed));
-        cv::imshow("Camera", color_frame);
+
+        // Save most recent image data.
+        saveImage(color_frame, "./camera" + std::to_string(idx) + "_images", std::to_string(elapsed));
+        cv::imshow("Camera" + std::to_string(idx), color_frame);
+
         if (debug)
             printf("Completed camera acquisition.");
     }

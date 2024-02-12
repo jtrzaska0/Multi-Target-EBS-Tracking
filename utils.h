@@ -1,51 +1,60 @@
-#pragma once
+// File     utils.h
+// Summary  Utility function for data passing and display.
+// Authors  Trevor Schlackt - Modified by Jacob Trzaska
+# pragma once
 
-#include <future>
-#include <armadillo>
-#include <mlpack.hpp>
-#include <utility>
-#include "controller.h"
-#include "videos.h"
+// Standard imports
+# include <future>
+# include <armadillo>
+# include <mlpack.hpp>
+# include <utility>
 
+// Local imports
+# include "controller.h"
+# include "videos.h"
+
+// Namespacing
 using json = nlohmann::json;
 
+
 class ProcessingInit {
-public:
+    public:
     double dt;
     bool enable_tracking;
     int Nx;
     int Ny;
     bool enable_event_log;
     std::string event_file;
-    double mag;
+    std::vector<double> mag;
     std::string position_method;
     double eps;
     bool report_average;
-    double r_center;
-    bool enable_stage;
-    double hfovx;
-    double hfovy;
-    double offset_x;
-    double offset_y;
-    double offset_z;
-    double arm;
-    int pan_offset;
-    int tilt_offset;
-    int begin_pan;
-    int end_pan;
-    int begin_tilt;
-    int end_tilt;
-    float begin_pan_angle;
-    float end_pan_angle;
-    float begin_tilt_angle;
-    float end_tilt_angle;
+    std::vector<double> r_center;
+    std::vector<bool> enable_stage;
+    std::vector<double> hfovx;
+    std::vector<double> hfovy;
+    std::vector<double> offset_x;
+    std::vector<double> offset_y;
+    std::vector<double> offset_z;
+    std::vector<double> arm;
+    std::vector<int> pan_offset;
+    std::vector<int> tilt_offset;
+    std::vector<int> begin_pan;
+    std::vector<int> end_pan;
+    std::vector<int> begin_tilt;
+    std::vector<int> end_tilt;
+    std::vector<float> begin_pan_angle;
+    std::vector<float> end_pan_angle;
+    std::vector<float> begin_tilt_angle;
+    std::vector<float> end_tilt_angle;
     bool verbose;
 
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
-                   double mag, const std::string &position_method, double eps, bool report_average, double r_center,
-                   bool enable_stage, double hfovx, double hfovy, double offset_x, double offset_y, double offset_z,
-                   double arm, int pan_offset, int tilt_offset, int begin_pan, int end_pan, int begin_tilt, int end_tilt,
-                   float begin_pan_angle, float end_pan_angle, float begin_tilt_angle, float end_tilt_angle, bool verbose) {
+                   std::vector<double> mag, const std::string &position_method, double eps, bool report_average, std::vector<double> r_center,
+                   std::vector<bool> enable_stage, double hfovx, double hfovy, double offset_x, double offset_y, std::vector<double> offset_z,
+                   std::vector<double> arm, std::vector<int> pan_offset, std::vector<int> tilt_offset, std::vector<int> begin_pan, std::vector<int> end_pan, 
+                   std::vector<int> begin_tilt, std::vector<int> end_tilt, std::vector<float> begin_pan_angle, std::vector<float> end_pan_angle, 
+                   std::vector<float> begin_tilt_angle, std::vector<float> end_tilt_angle, bool verbose) {
         this->dt = dt;
         this->enable_tracking = enable_tracking;
         this->Nx = Nx;
@@ -79,7 +88,11 @@ public:
 };
 
 class EventInfo {
-public:
+    /*
+    Keep an event for an integration time.
+    */
+
+    public:
     cv::Mat event_image;
     std::string event_string;
 
@@ -92,7 +105,7 @@ public:
 };
 
 class WindowInfo {
-public:
+    public:
     EventInfo event_info;
     arma::mat stage_positions;
     std::string positions_string;
@@ -118,11 +131,15 @@ public:
 };
 
 class StageInfo {
-public:
-    int prev_pan;
-    int prev_tilt;
+    /*
+    Log where the stages are looking.
+    */
 
-    StageInfo(int prev_pan, int prev_tilt) {
+    public:
+    std::vector<int> prev_pan;
+    std::vector<int> prev_tilt;
+
+    StageInfo(std::vector<int> prev_pan, std::vector<int> prev_tilt) {
         this->prev_pan = prev_pan;
         this->prev_tilt = prev_tilt;
     }
@@ -172,6 +189,20 @@ arma::mat get_kmeans_positions(const arma::mat &positions_mat) {
 }
 
 arma::mat get_dbscan_positions(const arma::mat &positions_mat, double eps) {
+    /*
+    Cluster the clusters.
+
+    Args:
+        positions_mat: Matrix of possible target locations.
+        eps: Clustering radius.
+
+    Ret:
+        Filtered (possible) target locations.
+
+    Notes:
+        None.
+    */
+
     mlpack::dbscan::DBSCAN<> db(eps, 3);
     arma::Row<size_t> assignments;
     arma::mat centroids;
@@ -205,16 +236,20 @@ arma::mat get_dbscan_positions(const arma::mat &positions_mat, double eps) {
 
 
 arma::mat run_tracker(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking) {
+
     std::vector<double> positions;
     if (!enable_tracking || events.empty()) {
         return positions_vector_to_matrix(positions);
     }
-    double *mem{events.data()};
-    double t0{events[0]};
-    int nEvents{(int) events.size() / 4};
+
+    double *mem {events.data()};
+    double t0 {events[0]};
+
+    int nEvents {(int) events.size() / 4};
+
     while (true) {
-        double t1{t0 + dt};
-        int N{0};
+        double t1 {t0 + dt};
+        int N {0};
         for (; N < (int) (events.data() + events.size() - mem) / 4; ++N)
             if (mem[4 * N] >= t1)
                 break;
@@ -222,36 +257,58 @@ arma::mat run_tracker(std::vector<double> events, double dt, DBSCAN_KNN T, bool 
         t0 = t1;
         if (N > 0) {
             T(mem, N);
-            Eigen::MatrixXd targets{T.currentTracks()};
+            Eigen::MatrixXd targets {T.currentTracks()};
 
             if (t0 > events[4 * (nEvents - 1)]) {
                 for (int i{0}; i < targets.rows(); ++i) {
                     positions.push_back(targets(i, 0));
                     positions.push_back(targets(i, 1));
                 }
+
                 break;
             }
+
             T.predict();
             mem += 4 * N;
         }
     }
+
     return positions_vector_to_matrix(positions);
 }
 
 arma::mat get_position(const std::string &method, arma::mat &positions, arma::mat &previous_positions, double eps,
                        std::binary_semaphore *update_positions) {
+    /*
+    Filter clusters to find viable targets.
+
+    Args:
+        method: Filtering method.
+        Positions: Positions of possible targets.
+        previous_positions: Positions of previous possible targets.
+        eps: Clsutering radius.
+        update_positions: Boolean indicating whether or not to update positions.
+
+    Ret:
+        An arma::mat containing the new positions.
+
+    Notes:
+        None.
+    */
+
     arma::mat ret;
     if ((int) positions.n_cols > 0) {
         if (method == "median") {
             ret = arma::median(positions, 1);
             return ret;
         }
+
         if (method == "median-history") {
             arma::mat latest = arma::median(positions, 1);
             add_position_history(previous_positions, latest, update_positions);
             ret = arma::mean(previous_positions, 1);
             return ret;
         }
+
         if (method == "median-linearity") {
             auto eigen_pos = armaToEigen(positions);
             auto eigen_prev_pos = armaToEigen(previous_positions);
@@ -288,16 +345,19 @@ arma::mat get_position(const std::string &method, arma::mat &positions, arma::ma
             add_position_history(previous_positions, ret, update_positions);
             return ret;
         }
+
         if (method == "dbscan") {
             ret = get_dbscan_positions(positions, eps);
             return ret;
         }
+
         if (method == "dbscan-history") {
             arma::mat candidates = get_dbscan_positions(positions, eps);
             double x = previous_positions(0, 0);
             double y = previous_positions(1, 0);
             double minDistance = std::numeric_limits<double>::max();
             int closestIndex = -1;
+
             // Iterate over the columns of candidates
             for (size_t i = 0; i < candidates.n_cols; ++i) {
                 // Calculate the Euclidean distance between (x, y) and the current candidate
@@ -311,22 +371,25 @@ arma::mat get_position(const std::string &method, arma::mat &positions, arma::ma
                     closestIndex = static_cast<int>(i);
                 }
             }
+
             if (closestIndex >= 0) {
                 ret = candidates.col(closestIndex);
-            }
-            else {
+            } else {
                 ret = arma::median(candidates, 1);
             }
             add_position_history(previous_positions, ret, update_positions);
             return ret;
         }
+
         if (method == "kmeans") {
             ret = get_kmeans_positions(positions);
             return ret;
         }
     }
+
     return ret;
 }
+
 
 WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &event_info, arma::mat positions,
                             arma::mat& prev_positions, std::binary_semaphore *update_positions, int prev_x,
@@ -414,6 +477,7 @@ WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &ev
                         2);
         }
     }
+
     WindowInfo info(event_info, stage_positions, positions_string, prev_x, prev_y, n_samples);
     return info;
 }
@@ -428,10 +492,12 @@ void update_window(const std::string &winname, const cv::Mat &cvmat) {
 EventInfo read_packets(std::vector<double> events, int Nx, int Ny, bool enable_event_log) {
     std::string event_string;
     cv::Mat cvEvents(Ny, Nx, CV_8UC3, cv::Vec3b{127, 127, 127});
+
     if (events.empty()) {
         EventInfo info;
         return info;
     }
+
     for (int i = 0; i < events.size(); i += 4) {
         double ts = events.at(i);
         int x = (int) events.at(i + 1);
@@ -445,69 +511,184 @@ EventInfo read_packets(std::vector<double> events, int Nx, int Ny, bool enable_e
             event_string += std::to_string(pol) + "\n";
         }
     }
+
     EventInfo info(cvEvents, event_string);
     return info;
 }
+
 
 // take a packet and run through the entire processing taskflow
 // return a cv mat for plotting and an arma mat for stage positions
 WindowInfo process_packet(const std::vector<double>& events, const DBSCAN_KNN& T, const ProcessingInit &proc_init,
                           const WindowInfo& prev_window, arma::mat& prev_positions,
                           std::binary_semaphore *update_positions, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
+    /*
+    Get target detections and tracks from the newest set of events.
+
+    Args:
+        events: Most recent event packet.
+        T: Detection and tracking algorithm based on DBSCAN and K-Nearest Neighbors.
+        proc_init: Globally import program parameters.
+        prev_window:   Previoous window.
+        prev_position: Previous target locations.
+        update_positions: Indicates whether or not to update stage positions.
+
+    Ret:
+        A WindowInfo structure containing possible target positions and data for windows.
+
+    Notes:
+        None.
+    */
+
     cv::Mat event_image;
     arma::mat stage_positions;
-    std::future<arma::mat> fut_positions = std::async(std::launch::async, run_tracker, events, proc_init.dt, T,
-                                                      proc_init.enable_tracking);
-    std::future<EventInfo> fut_event_info = std::async(std::launch::async, read_packets, events,
-                                                       proc_init.Nx, proc_init.Ny, proc_init.enable_event_log);
-    arma::mat positions = fut_positions.get();
-    EventInfo event_info = fut_event_info.get();
-    WindowInfo tracking_info = calculate_window(proc_init, event_info, positions, prev_positions, update_positions,
-                                                prev_window.prev_x, prev_window.prev_y, prev_window.n_samples, start);
+
+    std::future<arma::mat> fut_positions {
+        std::async(std::launch::async, run_tracker, events, proc_init.dt, T, proc_init.enable_tracking)
+    };
+
+    std::future<EventInfo> fut_event_info {
+        std::async(std::launch::async, read_packets, events, proc_init.Nx, proc_init.Ny, proc_init.enable_event_log)
+    };
+
+    arma::mat positions {fut_positions.get()};
+    EventInfo event_info {fut_event_info.get()};
+
+    // Get data regarding possible target locations.
+    WindowInfo tracking_info {
+        calculate_window(
+            proc_init, 
+            event_info, 
+            positions, 
+            prev_positions, 
+            update_positions,
+            prev_window.prev_x, 
+            prev_window.prev_y, 
+            prev_window.n_samples, 
+            start
+        )
+    };
+
     return tracking_info;
 }
 
-StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arma::mat positions, int prev_pan, int prev_tilt) {
-    if (proc_init.enable_stage) {
-        if (positions.n_cols > 0) {
-            // Go to first position in list. Selecting between objects to be implemented later.
-            double x = positions(0, 0) - ((double) proc_init.Nx / 2);
-            double y = ((double) proc_init.Ny / 2) - positions(1, 0);
 
-            double theta = get_theta(y, proc_init.Ny, proc_init.hfovy);
-            double phi = get_phi(x, proc_init.Nx, proc_init.hfovx);
-            double theta_prime = get_theta_prime(phi, theta, proc_init.offset_x, proc_init.offset_y, proc_init.offset_z, proc_init.r_center, proc_init.arm);
-            double phi_prime = get_phi_prime(phi, proc_init.offset_x, proc_init.offset_y, proc_init.r_center);
-            int pan_position = get_motor_position(proc_init.begin_pan, proc_init.end_pan,
-                                                  proc_init.begin_pan_angle, proc_init.end_pan_angle, phi_prime);
-            // Convert tilt to FLIR frame
-            theta_prime = M_PI_2 - theta_prime;
-            int tilt_position = get_motor_position(proc_init.begin_tilt, proc_init.end_tilt,
-                                                   proc_init.begin_tilt_angle, proc_init.end_tilt_angle, theta_prime);
-            ctrl.update_setpoints(pan_position + proc_init.pan_offset, tilt_position + proc_init.tilt_offset);
-            StageInfo info(pan_position, tilt_position);
-            return info;
+/***************************************************
+These last two functions are responsible for moving 
+the FLIR stage when the system in coarse-track.
+***************************************************/
+StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arma::mat positions, std::vector<int> prev_pan, std::vector<int> prev_tilt) {
+    /*
+    Update stage positions using clusters from the event-based tracking algorithm.
+
+    Args:
+        ctrl:      Collection of stage controllers.
+        proc_init: Globally important program parameters.
+        positions: Locations of possible targets.
+        prev_pan:  Previous pan angles.
+        prev_tilt: Previous tilt angles.
+
+    Ret:
+        Details on the new stage configurations.
+
+    Notes:
+        None.
+    */
+
+    for (int n {0}; n < ctrl.size(); ++n)
+        if (proc_init.enable_stage[n]) {
+            if (positions.n_cols > 0) {
+                // Go to first position in list. Selecting between objects to be implemented later.
+                double x { positions(0, 0) - ((double) proc_init.Nx / 2) };
+                double y { ((double) proc_init.Ny / 2) - positions(1, 0) };
+    
+                double theta { get_theta(y, proc_init.Ny, proc_init.hfovy[n]) };
+                double phi { get_phi(x, proc_init.Nx, proc_init.hfovx[n]) };
+
+                double theta_prime {
+                    get_theta_prime(
+                        phi, theta, proc_init.offset_x[n], proc_init.offset_y[n], proc_init.offset_z[n], proc_init.r_center[n], proc_init.arm[n]
+                    )
+                };
+
+                double phi_prime {
+                    get_phi_prime(
+                        phi, proc_init.offset_x[n], proc_init.offset_y[n], proc_init.r_center[n]
+                    )
+                };
+
+                int pan_position {
+                    get_motor_position(
+                        proc_init.begin_pan[n], proc_init.end_pan[n], proc_init.begin_pan_angle[n], proc_init.end_pan_angle[n], phi_prime
+                    )
+                };
+
+                // Convert tilt to FLIR frame
+                theta_prime = M_PI_2 - theta_prime;
+                int tilt_position = get_motor_position(proc_init.begin_tilt, proc_init.end_tilt,
+                                                       proc_init.begin_tilt_angle, proc_init.end_tilt_angle, theta_prime);
+
+                ctrl[n].update_setpoints(pan_position + proc_init.pan_offset, tilt_position + proc_init.tilt_offset);
+                StageInfo info(pan_position, tilt_position);
+                return info;
+            }
+        } else {
+
         }
     }
+
     StageInfo info(prev_pan, prev_tilt);
     return info;
 }
 
 std::tuple<StageInfo, WindowInfo>
-read_future(StageController& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
+read_future(std::vector<StageController>& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
             const StageInfo &prevStage, std::ofstream &detectionsFile, std::ofstream &eventFile,
             std::chrono::time_point<std::chrono::high_resolution_clock> start) {
+    /*
+    Get the data from packet processing.
+
+    Args:
+        ctrl:           Collection of stage controllers.
+        future:         Promised data from packet processing - is an std::future.
+        proc_init:      Globally important program parameters.
+        prevStage:      Information regarding prior stage positioning.
+        detectionsFile: File for logging event-based detections.
+        eventFile:      Track events.
+        start:          Start time for tracking.
+
+    Ret:
+        Stage positioning and event window data.
+
+    Notes:
+        None.
+    */
+
+    // How many stages to command.
+    int N {ctrl.size()};
+
+    // Get the data from packet processing.
     const WindowInfo window_info = future.get();
     update_window("PLOT_EVENTS", window_info.event_info.event_image);
+
+    // Log events information.
     if (!window_info.positions_string.empty())
         detectionsFile << window_info.positions_string + "\n";
+
     eventFile << window_info.event_info.event_string;
+
+    // Track program timing.
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     int elapsed = (int)duration.count();
+
+    // Update the event image (framed events).
     if (!window_info.event_info.event_image.empty())
         saveImage(window_info.event_info.event_image, "./event_images", std::to_string(elapsed));
+
+    // Use the event detections for move stage when in coarse track.
     StageInfo stage_info = move_stage(ctrl, proc_init, window_info.stage_positions, prevStage.prev_pan, prevStage.prev_tilt);
     std::tuple<StageInfo, WindowInfo> ret = {stage_info, window_info};
+
     return ret;
 }
