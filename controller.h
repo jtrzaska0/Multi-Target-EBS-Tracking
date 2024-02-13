@@ -205,6 +205,12 @@ class StageController {
         }
     };
 
+    // Move constructor
+    StageController(StageController&& sc) = default;
+
+    // Copy constructor
+    StageController(StageController& sc) = delete;
+
     ~StageController() {
         this->shutdown();
     }

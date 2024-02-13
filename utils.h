@@ -31,8 +31,8 @@ class ProcessingInit {
     bool report_average;
     std::vector<double> r_center;
     std::vector<bool> enable_stage;
-    std::vector<double> hfovx;
-    std::vector<double> hfovy;
+    double hfovx;
+    double hfovy;
     std::vector<double> offset_x;
     std::vector<double> offset_y;
     std::vector<double> offset_z;
@@ -51,7 +51,7 @@ class ProcessingInit {
 
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
                    std::vector<double> mag, const std::string &position_method, double eps, bool report_average, std::vector<double> r_center,
-                   std::vector<bool> enable_stage, double hfovx, double hfovy, double offset_x, double offset_y, std::vector<double> offset_z,
+                   std::vector<bool> enable_stage, double hfovx, double hfovy, std::vector<double> offset_x, std::vector<double> offset_y, std::vector<double> offset_z,
                    std::vector<double> arm, std::vector<int> pan_offset, std::vector<int> tilt_offset, std::vector<int> begin_pan, std::vector<int> end_pan, 
                    std::vector<int> begin_tilt, std::vector<int> end_tilt, std::vector<float> begin_pan_angle, std::vector<float> end_pan_angle, 
                    std::vector<float> begin_tilt_angle, std::vector<float> end_tilt_angle, bool verbose) {
@@ -394,7 +394,7 @@ arma::mat get_position(const std::string &method, arma::mat &positions, arma::ma
 WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &event_info, arma::mat positions,
                             arma::mat& prev_positions, std::binary_semaphore *update_positions, int prev_x,
                             int prev_y, int n_samples, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
-    int y_increment = (int) (proc_init.mag * proc_init.Ny / 2);
+    int y_increment = (int) (proc_init.mag[0] * proc_init.Ny / 2);
     int x_increment = (int) (y_increment * proc_init.Nx / proc_init.Ny);
     std::string positions_string;
     arma::mat stage_positions;
@@ -577,7 +577,7 @@ WindowInfo process_packet(const std::vector<double>& events, const DBSCAN_KNN& T
 These last two functions are responsible for moving 
 the FLIR stage when the system in coarse-track.
 ***************************************************/
-StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arma::mat positions, std::vector<int> prev_pan, std::vector<int> prev_tilt) {
+StageInfo move_stage(std::vector<StageController>& ctrl, const ProcessingInit &proc_init, arma::mat positions, std::vector<int> prev_pans, std::vector<int> prev_tilts) {
     /*
     Update stage positions using clusters from the event-based tracking algorithm.
 
@@ -585,8 +585,8 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
         ctrl:      Collection of stage controllers.
         proc_init: Globally important program parameters.
         positions: Locations of possible targets.
-        prev_pan:  Previous pan angles.
-        prev_tilt: Previous tilt angles.
+        prev_pans:  Previous pan angles.
+        prev_tilts: Previous tilt angles.
 
     Ret:
         Details on the new stage configurations.
@@ -595,49 +595,50 @@ StageInfo move_stage(StageController& ctrl, const ProcessingInit &proc_init, arm
         None.
     */
 
-    for (int n {0}; n < ctrl.size(); ++n)
+    // Create new vectors to store the stage information.
+    unsigned long N {ctrl.size()};
+    std::vector<int> pans {prev_pans};
+    std::vector<int> tilts {prev_tilts};
+
+    // Assign cameras to targets.
+    for (int n {0}; n < N && n < positions.n_cols; ++n)
         if (proc_init.enable_stage[n]) {
-            if (positions.n_cols > 0) {
-                // Go to first position in list. Selecting between objects to be implemented later.
-                double x { positions(0, 0) - ((double) proc_init.Nx / 2) };
-                double y { ((double) proc_init.Ny / 2) - positions(1, 0) };
+            // Go to first position in list. Selecting between objects to be implemented later.
+            double x { positions(0, n) - ((double) proc_init.Nx / 2) };
+            double y { ((double) proc_init.Ny / 2) - positions(1, n) };
     
-                double theta { get_theta(y, proc_init.Ny, proc_init.hfovy[n]) };
-                double phi { get_phi(x, proc_init.Nx, proc_init.hfovx[n]) };
+           double theta { get_theta(y, proc_init.Ny, proc_init.hfovy) };
+           double phi { get_phi(x, proc_init.Nx, proc_init.hfovx) };
 
-                double theta_prime {
-                    get_theta_prime(
-                        phi, theta, proc_init.offset_x[n], proc_init.offset_y[n], proc_init.offset_z[n], proc_init.r_center[n], proc_init.arm[n]
-                    )
-                };
+           double theta_prime {
+                get_theta_prime(
+                    phi, theta, proc_init.offset_x[n], proc_init.offset_y[n], proc_init.offset_z[n], proc_init.r_center[n], proc_init.arm[n]
+                )
+            };
 
-                double phi_prime {
-                    get_phi_prime(
-                        phi, proc_init.offset_x[n], proc_init.offset_y[n], proc_init.r_center[n]
-                    )
-                };
+            double phi_prime {
+                get_phi_prime(
+                    phi, proc_init.offset_x[n], proc_init.offset_y[n], proc_init.r_center[n]
+                )
+            };
 
-                int pan_position {
-                    get_motor_position(
-                        proc_init.begin_pan[n], proc_init.end_pan[n], proc_init.begin_pan_angle[n], proc_init.end_pan_angle[n], phi_prime
-                    )
-                };
+            int pan_position {
+                get_motor_position(
+                    proc_init.begin_pan[n], proc_init.end_pan[n], proc_init.begin_pan_angle[n], proc_init.end_pan_angle[n], phi_prime
+                )
+            };
 
-                // Convert tilt to FLIR frame
-                theta_prime = M_PI_2 - theta_prime;
-                int tilt_position = get_motor_position(proc_init.begin_tilt, proc_init.end_tilt,
-                                                       proc_init.begin_tilt_angle, proc_init.end_tilt_angle, theta_prime);
+            // Convert tilt to FLIR frame
+            theta_prime = M_PI_2 - theta_prime;
+            int tilt_position = get_motor_position(proc_init.begin_tilt[n], proc_init.end_tilt[n],
+                                                    proc_init.begin_tilt_angle[n], proc_init.end_tilt_angle[n], theta_prime);
 
-                ctrl[n].update_setpoints(pan_position + proc_init.pan_offset, tilt_position + proc_init.tilt_offset);
-                StageInfo info(pan_position, tilt_position);
-                return info;
-            }
-        } else {
-
-        }
+            ctrl[n].update_setpoints(pan_position + proc_init.pan_offset[n], tilt_position + proc_init.tilt_offset[n]);
+            pans[n] = pan_position;
+            tilts[n] = tilt_position;
     }
 
-    StageInfo info(prev_pan, prev_tilt);
+    StageInfo info(pans, tilts);
     return info;
 }
 
@@ -665,7 +666,7 @@ read_future(std::vector<StageController>& ctrl, std::future<WindowInfo> &future,
     */
 
     // How many stages to command.
-    int N {ctrl.size()};
+    unsigned long N {ctrl.size()};
 
     // Get the data from packet processing.
     const WindowInfo window_info = future.get();
