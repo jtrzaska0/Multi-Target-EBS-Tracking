@@ -25,7 +25,7 @@ class ProcessingInit {
     int Ny;
     bool enable_event_log;
     std::string event_file;
-    std::vector<double> mag;
+    double mag;
     std::string position_method;
     double eps;
     bool report_average;
@@ -50,7 +50,7 @@ class ProcessingInit {
     bool verbose;
 
     ProcessingInit(double dt, bool enable_tracking, int Nx, int Ny, bool enable_event_log, const std::string &event_file,
-                   std::vector<double> mag, const std::string &position_method, double eps, bool report_average, std::vector<double> r_center,
+                   double mag, const std::string &position_method, double eps, bool report_average, std::vector<double> r_center,
                    std::vector<bool> enable_stage, double hfovx, double hfovy, std::vector<double> offset_x, std::vector<double> offset_y, std::vector<double> offset_z,
                    std::vector<double> arm, std::vector<int> pan_offset, std::vector<int> tilt_offset, std::vector<int> begin_pan, std::vector<int> end_pan, 
                    std::vector<int> begin_tilt, std::vector<int> end_tilt, std::vector<float> begin_pan_angle, std::vector<float> end_pan_angle, 
@@ -394,7 +394,7 @@ arma::mat get_position(const std::string &method, arma::mat &positions, arma::ma
 WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &event_info, arma::mat positions,
                             arma::mat& prev_positions, std::binary_semaphore *update_positions, int prev_x,
                             int prev_y, int n_samples, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
-    int y_increment = (int) (proc_init.mag[0] * proc_init.Ny / 2);
+    int y_increment = (int) (proc_init.mag * proc_init.Ny / 2);
     int x_increment = (int) (y_increment * proc_init.Nx / proc_init.Ny);
     std::string positions_string;
     arma::mat stage_positions;
@@ -577,12 +577,12 @@ WindowInfo process_packet(const std::vector<double>& events, const DBSCAN_KNN& T
 These last two functions are responsible for moving 
 the FLIR stage when the system in coarse-track.
 ***************************************************/
-StageInfo move_stage(std::vector<StageController>& ctrl, const ProcessingInit &proc_init, arma::mat positions, std::vector<int> prev_pans, std::vector<int> prev_tilts) {
+StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit &proc_init, arma::mat positions, std::vector<int> prev_pans, std::vector<int> prev_tilts) {
     /*
     Update stage positions using clusters from the event-based tracking algorithm.
 
     Args:
-        ctrl:      Collection of stage controllers.
+        ctrl:      Collection of stage controller pointers.
         proc_init: Globally important program parameters.
         positions: Locations of possible targets.
         prev_pans:  Previous pan angles.
@@ -633,7 +633,7 @@ StageInfo move_stage(std::vector<StageController>& ctrl, const ProcessingInit &p
             int tilt_position = get_motor_position(proc_init.begin_tilt[n], proc_init.end_tilt[n],
                                                     proc_init.begin_tilt_angle[n], proc_init.end_tilt_angle[n], theta_prime);
 
-            ctrl[n].update_setpoints(pan_position + proc_init.pan_offset[n], tilt_position + proc_init.tilt_offset[n]);
+            ctrl[n]->update_setpoints(pan_position + proc_init.pan_offset[n], tilt_position + proc_init.tilt_offset[n]);
             pans[n] = pan_position;
             tilts[n] = tilt_position;
     }
@@ -643,14 +643,14 @@ StageInfo move_stage(std::vector<StageController>& ctrl, const ProcessingInit &p
 }
 
 std::tuple<StageInfo, WindowInfo>
-read_future(std::vector<StageController>& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
+read_future(std::vector<StageController *>& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
             const StageInfo &prevStage, std::ofstream &detectionsFile, std::ofstream &eventFile,
             std::chrono::time_point<std::chrono::high_resolution_clock> start) {
     /*
     Get the data from packet processing.
 
     Args:
-        ctrl:           Collection of stage controllers.
+        ctrl:           Collection of stage controller pointers.
         future:         Promised data from packet processing - is an std::future.
         proc_init:      Globally important program parameters.
         prevStage:      Information regarding prior stage positioning.

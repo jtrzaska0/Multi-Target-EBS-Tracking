@@ -1,7 +1,11 @@
-#pragma once
+// File     pointing.h
+// Summary  Miscellaneous functions.
+// Author   Trevor Schlackt, Jacob Trzaska
+# pragma once
 
-#include <X11/Xlib.h>
-#include <X11/keysym.h>
+# include <iostream>
+# include <X11/Xlib.h>
+# include <X11/keysym.h>
 
 double get_hfov(double focal_len, double dist, int npx, double px_size) {
     /*

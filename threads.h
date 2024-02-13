@@ -176,9 +176,9 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
         rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
 
-        if (key_is_pressed(XK_space)) {
-            active = false;
-        }
+        //if (key_is_pressed(XK_space)) {
+        //    active = false;
+        //}
 
         if (debug)
             printf("Completed EBS acquisition.\n");
@@ -332,9 +332,9 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
         rateFile << (double)total_duration.count() << "," << eventRate << "\n";
         buffers.PacketQueue.push(events);
 
-        if (key_is_pressed(XK_space)) {
-            active = false;
-        }
+        //if (key_is_pressed(XK_space)) {
+        //    active = false;
+        //}
 
         if (debug)
             printf("Completed EBS acquisition.\n");
@@ -350,13 +350,13 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
 }
 
 
-void processing_threads(std::vector<StageController>& ctrl, Buffers& buffers, const DBSCAN_KNN& T, const ProcessingInit& proc_init,
+void processing_threads(std::vector<StageController *>& ctrl, Buffers& buffers, const DBSCAN_KNN& T, const ProcessingInit& proc_init,
                         std::chrono::time_point<std::chrono::high_resolution_clock> start, const bool debug, const bool& active) {
     /*
     Primary processing thread.
 
     Args:
-        ctrl:      Collection of controllers for each connected stage.
+        ctrl:      Collection of controller pointers for each connected stage.
         T:         DBSCAN_KNN detector and tracker.
         proc_init: Globally important program parameters.
         start:     Program start time.
@@ -458,15 +458,15 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
         cv::cvtColor(frame, color_frame, cv::COLOR_GRAY2BGR);
         cv::Rect bbox;
 
-        if (key_is_pressed(XK_E)) {
-            enable_dnn = !enable_dnn;
-            if (enable_dnn)
-                printf("Fine track enabled.\n");
-            else
-                printf("Fine track disabled.\n");
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+        //if (key_is_pressed(XK_E)) {
+        //    enable_dnn = !enable_dnn;
+        //    if (enable_dnn)
+        //        printf("Fine track enabled.\n");
+        //    else
+        //        printf("Fine track disabled.\n");
+        //
+        //    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        //}
 
         if (enable_dnn) {
             if (!ctrl.get_tracker_status()) {
@@ -574,7 +574,7 @@ void camera_thread(StageCam& cam, StageController& ctrl, int height, int width, 
 
             } else {
                 bool isTrackingSuccessful = tracker->update(color_frame, bbox);
-                if (isTrackingSuccessful && !key_is_pressed(XK_Escape)) {
+                if (isTrackingSuccessful) {// && !key_is_pressed(XK_Escape)) {
                     cv::rectangle(color_frame, bbox, cv::Scalar(255, 0, 0), 2);
                     double target_x = (double) bbox.x + (bbox.width / 2.0) - (width / 2.0);
                     double target_y = (height / 2.0) - (double) bbox.y - (bbox.height / 2.0);

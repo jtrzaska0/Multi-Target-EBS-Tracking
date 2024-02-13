@@ -328,7 +328,9 @@ class StageController {
 
             auto stop_time = std::chrono::high_resolution_clock::now();
             auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
+
             update_mtx.lock();
+
             double pan_velocity = (pan_setpoint - current_pan) / (double)command_time;
             double tilt_velocity = (tilt_setpoint - current_tilt) / (double)command_time;
             int pan_change = abs((pan_setpoint - current_pan));

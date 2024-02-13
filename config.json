@@ -5,10 +5,7 @@
     "ENABLE_TRACKING": true,
     "COMMAND_METHOD": "dbscan-history",
     "EPSILON": 100,
-    "MAGNIFICATION": {
-        "0": 0.0645
-    },
-
+    "MAGNIFICATION": 0.0645,
     "ENABLE_LOGGING": true,
     "EVENT_FILEPATH": "data",
     "VIDEO_FPS": {
@@ -45,7 +42,10 @@
         "0": false
     },
 
-    "CONFIDENCE": 0.5,
+    "CONFIDENCE": {
+        "0": 0.5
+    },
+
     "ENABLE_PID": {
         "0": false
     },

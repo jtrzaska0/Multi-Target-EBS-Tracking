@@ -1,3 +1,7 @@
+// File     main.cpp
+// Summary  Read in program configuration and start up the tracking loops.
+// Authors  Trevor Schlackt, Jacob Trzaska
+
 # include <filesystem>
 # include <vector>
 # include <string>
@@ -82,7 +86,7 @@ int main(int argc, char *argv[]) {
     bool enable_tracking = params.value("ENABLE_TRACKING", false);                 
     std::string position_method = params.value("COMMAND_METHOD", "median-history");
     double eps = params.value("EPSILON", 15);                                      
-    std::vector<double> mag {params.value("MAGNIFICATION", 0.05)};                              
+    double mag = params.value("MAGNIFICATION", 0.05);
     bool enable_event_log = params.value("ENABLE_LOGGING", false);                 
     std::string event_file = params.value("EVENT_FILEPATH", "recording");          
     bool report_average = params.value("REPORT_AVERAGE", false);                   
@@ -153,12 +157,15 @@ int main(int argc, char *argv[]) {
         // Use ASCII encoding to index the configuration vectors. Note that
         // this also dictates our manner of naming the keys in the config
         // file.
-        char index[3] {'0', '0', '\0'};
+        char Index[3] {'0', '0', '\0'};
+        char * index {Index};
+
         if (n < 10) {
-            index[1] = 48 + n;
+            Index[1] = 48 + n;
+            index = Index + 1;
         } else {
-            index[0] = n / 10;
-            index[1] = n % 10;
+            Index[0] = n / 10;
+            Index[1] = n % 10;
         }
 
         // Store the n-th stage configuration.
@@ -170,7 +177,7 @@ int main(int argc, char *argv[]) {
         offset_x[n] = stage_params["OFFSET_X"].value(index, 0.0);
         offset_y[n] = stage_params["OFFSET_Y"].value(index, 0.15);
         offset_z[n] = stage_params["OFFSET_Z"].value(index, 0.0);
-        arm[n] = stage_params["ARM_LENGTH"].value(index, 0.2);
+        arm[n] = stage_params["ARM"].value(index, 0.2);
         dist[n] = stage_params["FOCUS_DIST"].value(index, 999999.9);
         begin_pan_angle[n] = (float) stage_params["START_PAN_ANGLE"].value(index, -M_PI_2);
         end_pan_angle[n] = (float) stage_params["END_PAN_ANGLE"].value(index, M_PI_2);
@@ -195,8 +202,8 @@ int main(int argc, char *argv[]) {
         coarse_overshoot_time[n] = stage_params["COARSE_OVERSHOOT_TIME"].value(index, 0.2);
         fine_overshoot_time[n] = stage_params["FINE_OVERSHOOT_TIME"].value(index, 0.2);
         overshoot_thres[n] = stage_params["OVERSHOOT_THRESHOLD"].value(index, 100);
-        tcp_ip_addr[n] = stage_params["OVERSHOOT_THRESHOLD"].value(index, "null");
-        
+        tcp_ip_addr[n] = stage_params["TCP_IP_INIT"].value(index, "null");
+
         if (tcp_ip_addr[n] == "null") {
             std::cerr << "Invalid IP address. Abort.\n";
             exit(EXIT_SUCCESS);
@@ -261,21 +268,22 @@ int main(int argc, char *argv[]) {
                 printf("Failed to connect to stage.\n");
                 return 1;
             }
+
             // Set terse mode
             if (cpi_ptcmd(cer[n], &status[n], OP_FEEDBACK_SET, CPI_ASCII_FEEDBACK_TERSE))
                 die("Failed to set feedback mode.\n");
     
             // Set min/max positions, speed, and acceleration
-            if (cpi_ptcmd(cer[n], &status[n], OP_PAN_USER_MAX_POS_SET, max_pan_pos) ||
-                cpi_ptcmd(cer[n], &status[n], OP_PAN_USER_MIN_POS_SET, min_pan_pos) ||
-                cpi_ptcmd(cer[n], &status[n], OP_TILT_USER_MAX_POS_SET, max_tilt_pos) ||
-                cpi_ptcmd(cer[n], &status[n], OP_TILT_USER_MIN_POS_SET, min_tilt_pos) ||
-                cpi_ptcmd(cer[n], &status[n], OP_TILT_LOWER_SPEED_LIMIT_SET, min_tilt_speed) ||
-                cpi_ptcmd(cer[n], &status[n], OP_TILT_UPPER_SPEED_LIMIT_SET, max_tilt_speed) ||
-                cpi_ptcmd(cer[n], &status[n], OP_PAN_LOWER_SPEED_LIMIT_SET, min_pan_speed) ||
-                cpi_ptcmd(cer[n], &status[n], OP_PAN_UPPER_SPEED_LIMIT_SET, max_pan_speed) ||
-                cpi_ptcmd(cer[n], &status[n], OP_PAN_ACCEL_SET, pan_acc) ||
-                cpi_ptcmd(cer[n], &status[n], OP_TILT_ACCEL_SET, tilt_acc))
+            if (cpi_ptcmd(cer[n], &status[n], OP_PAN_USER_MAX_POS_SET, max_pan_pos[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_PAN_USER_MIN_POS_SET, min_pan_pos[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_TILT_USER_MAX_POS_SET, max_tilt_pos[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_TILT_USER_MIN_POS_SET, min_tilt_pos[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_TILT_LOWER_SPEED_LIMIT_SET, min_tilt_speed[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_TILT_UPPER_SPEED_LIMIT_SET, max_tilt_speed[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_PAN_LOWER_SPEED_LIMIT_SET, min_pan_speed[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_PAN_UPPER_SPEED_LIMIT_SET, max_pan_speed[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_PAN_ACCEL_SET, pan_acc[n]) ||
+                cpi_ptcmd(cer[n], &status[n], OP_TILT_ACCEL_SET, tilt_acc[n]))
                 die("Basic unit queries failed.\n");
         }
     }
@@ -284,14 +292,19 @@ int main(int argc, char *argv[]) {
     auto start_time = std::chrono::high_resolution_clock::now();
 
     // Set controllers for each stage.
-    std::vector<StageController> stageControllers;
-    for (int n {0}; n < num_stages; ++n)
-        stageControllers.emplace_back(kp_coarse[n], ki_coarse[n], kd_coarse[n], kp_fine[n], ki_fine[n], kd_fine[n], 4500, -4500, 1500, -1500, start_time,
+    std::vector<StageController *> stageControllers;
+    for (int n {0}; n < num_stages; ++n) {
+        StageController * ptr {new StageController(kp_coarse[n], ki_coarse[n], kd_coarse[n], kp_fine[n], ki_fine[n], kd_fine[n], 4500, -4500, 1500, -1500, start_time,
                              event_file, enable_event_log, cer[n], enable_pid[n], fine_overshoot_time[n], coarse_overshoot_time[n],
-                             overshoot_thres[n], update_time[n], stage_update[n], verbose, n);
-
+                             overshoot_thres[n], update_time[n], stage_update[n], verbose, n)
+        };
+         std::this_thread::sleep_for(std::chrono::milliseconds(50000));
+ 
+        stageControllers.push_back(ptr);
+    }
+ 
     // Ready the cameras on each stage.
-    std::vector<StageCam> stageCams;
+    std::vector<StageCam *> stageCams;
     std::vector<double> nfov_hfovx(num_stages);
     std::vector<double> nfov_hfovy(num_stages);
     std::vector<int> cam_widths(num_stages);
@@ -303,12 +316,15 @@ int main(int argc, char *argv[]) {
         nfov_hfovy[n] = get_hfov(nfov_focal_len[n], dist[n], nfov_ny[n], nfov_px_size[n]);
 
         // Calculate the string-based index.
-        char index[3] {'0', '0', '\0'};
+        char Index[3] {'0', '0', '\0'};
+        char * index {Index};
+
         if (n < 10) {
-            index[1] = 48 + n;
+            Index[1] = 48 + n;
+            index = Index + 1;
         } else {
-            index[0] = n / 10;
-            index[1] = n % 10;
+            Index[0] = n / 10;
+            Index[1] = n % 10;
         }
 
         // Startup camera. 
@@ -319,11 +335,12 @@ int main(int argc, char *argv[]) {
         cam_widths[n] = cam_width;
         cam_heights[n] = cam_height;
 
-        stageCams.emplace_back(cam_width, cam_height, 30000, n); // Likely needs to be edited to use device ID instead of index.
+        StageCam * ptr {new StageCam(cam_width, cam_height, 30000, n)}; // Likely needs to be edited to use device ID instead of index.
+        stageCams.push_back(ptr);
 
         cv::namedWindow("Camera" + std::to_string(n), cv::WindowFlags::WINDOW_AUTOSIZE | cv::WindowFlags::WINDOW_KEEPRATIO |
                                   cv::WindowFlags::WINDOW_GUI_EXPANDED);
-    
+
         // Could not create directories for data storage.
         if (!makeDirectory("./camera" + std::to_string(n) +"_images")) {
             std::cout << "Failed to create frame storage for a camera. Aborting.\n";
@@ -354,11 +371,15 @@ int main(int argc, char *argv[]) {
     std::thread processor(processing_threads, std::ref(stageControllers), std::ref(buffers), algo, std::ref(proc_init), start_time, debug, std::ref(active));
 
     // Start up the cameras.
-    std::vector<std::thread> cameraThreads;
-    for (int n {0}; n < num_stages; ++n)
-        cameraThreads.emplace_back(camera_thread, std::ref(stageCams[n]), std::ref(stageControllers[n]), cam_heights[n], cam_widths[n], nfov_hfovx[n], nfov_hfovy[n], 
-            onnx_loc, enable_stage[n], enable_dnn[n], start_time, confidence_thres[n], debug, std::ref(active), n);
+    std::vector<std::thread *> cameraThreads;
+    for (int n {0}; n < num_stages; ++n) {
+        std::thread * ptr {new std::thread(camera_thread, std::ref(*stageCams[n]), std::ref(*stageControllers[n]), cam_heights[n], cam_widths[n], nfov_hfovx[n], nfov_hfovy[n], 
+            onnx_loc, enable_stage[n], enable_dnn[n], start_time, confidence_thres[n], debug, std::ref(active), n)
+        };
         
+        cameraThreads.push_back(ptr);
+    }
+
     // Start collecting evetnts.
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, debug, noise_params, enable_filter, event_file, start_time, active);
@@ -368,12 +389,12 @@ int main(int argc, char *argv[]) {
     // Wait for all threads to terminate.
     processor.join();
     for (auto& th : cameraThreads)
-        th.join();
+        th->join();
 
     // Begin shutdown.
     for (int n {0}; n < num_stages; ++n) {
         // Shutdown the stage controller.
-        stageControllers[n].shutdown();
+        stageControllers[n]->shutdown();
  
         // Reset the stages.
         if (cer[n]) {
