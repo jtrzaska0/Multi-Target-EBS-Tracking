@@ -61,24 +61,19 @@ class Registry {
 
      // Ordered dictionary of target information.
      std::map<int, Eigen::MatrixXd> targets;
-     std::set<int> unassignedTargets;
 
      // Number of frames each target has been missing.
      std::map<int, int> numFramesLost;
-
-     // Camera to target mappings.
-     int num_stages;
-     std::map<int, int> cameraTargets;
 
      // Set thresholds.
      int maxNumFramesLost;
      double distThreshold;
 
-     // Prevent a race condition.
-     std::mutex lock;
+    // Prevent a race condition.
+    std::mutex lock;
 
      public:
-     Registry(int mNumFrLost,  double distTh, int num_cams = 1) : nextID {0}, num_stages {num_cams} {
+     Registry(int mNumFrLost,  double distTh) : nextID {0} {
           /*
           Constructor.
 
@@ -94,11 +89,6 @@ class Registry {
           // Set thresholds.
           maxNumFramesLost = mNumFrLost;
           distThreshold = distTh;
-
-          // Build the set of camera IDs.
-          for (int id {0}; id < num_stages; ++id) {
-               cameraTargets[id] = -1; // A target ID of '-1' means no target assigned.
-          }
 
           return;
      }
@@ -118,7 +108,7 @@ class Registry {
           */
 
           // Prevent a read during writing.
-          std::lock_guard<std::mutex> mut(lock);
+          lock.lock();          
 
           // Store IDs that need deregistering.
           std::vector<int> rmIds;
@@ -137,6 +127,8 @@ class Registry {
                // Deregister missing targets.
                for (auto ID : rmIds)
                     deRegister(ID);
+
+               lock.unlock();
 
                return;
           }
@@ -305,6 +297,8 @@ class Registry {
           for (auto ID : rmIds)
                deRegister(ID);
 
+          lock.unlock();
+
           return;
      }
 
@@ -320,56 +314,11 @@ class Registry {
                List of current objects tracked.
           */
 
-          std::lock_guard<std::mutex> mut(lock);
+          lock.lock();
           std::map<int, Eigen::MatrixXd> retTargets {targets};
+          lock.unlock();
 
           return retTargets;
-     }
-
-
-     void assign(int cameraId, int targId) {
-         /*
-         Manually assign a camera to a specific target ID.
-        
-         Args:
-             cameraId: Camera index, as entered in the JSON file.
-             targId: Target index, as displayed on the event image.
-
-         Ret:
-             None.
-
-         Notes:
-             This function should be updated to a return a string, indicating
-             a successful assignment (to the curses window).
-         */
-
-         if (cameraId >= num_stages || cameraId < 0)
-             return;
-
-         // Acquire exlcusive access to registry.
-         std::lock_guard<std::mutex> mut(lock);
-
-         // Backup current target.
-         int curr {cameraTargets[cameraId]};
-
-         // If not tracking, immediately assign new target.
-         if (curr == -1) {
-             if (!targets.contains(targId))
-                 return;
-
-             cameraTargets[cameraId] = targId;
-         } else {
-             // If we are tracking, check whether the new camera must be added to
-             // the untracked set.
-             if (!targets.contains(targId)) {
-                 cameraTargets[cameraId] = -1;
-                 return;
-             }
-
-             cameraTargets[cameraId] = targId;
-         }
-
-         return;
      }
 
 
@@ -385,12 +334,9 @@ class Registry {
                None
           */
 
-          std::lock_guard<std::mutex> mut(lock);
-
           // Add the target and increment the ID counter.
           targets[nextID] = centroid;
           numFramesLost[nextID] = 0;
-          unassignedTargets.insert(nextID);
           ++nextID;
 
           return;
@@ -402,57 +348,17 @@ class Registry {
           Remove a target from the tracking list.
 
           Args:
-               ID: Dictionary key for object being removed.
+               objKey: Dictionary key for object being removed.
 
           Ret:
                None
           */
 
-          std::lock_guard<std::mutex> mut(lock);
-
-          // Remove the ID from target listing.
           numFramesLost.erase(ID);
-          unassignedTargets.erase(ID);
           targets.erase(ID);
-
-          // Unassign cameras tracking this ID.
-          for (auto iter {cameraTargets.begin()}; iter != cameraTargets.end(); ++iter)
-               if (iter->second == ID)
-                    iter-> second = -1;
 
           return;
     }
-
-
-    void associate() {
-         /*
-         Update the camera - target associations.
-
-         Args:
-             None.
-
-         Ret:
-            None.
-
-         Notes:
-             None.
-         */
-
-         std::lock_guard<std::mutex> mut(lock);
-
-         for (int id {0}; id < num_stages; ++id) {
-             if (cameraTargets.contains(id) != -1)
-                 continue;
-
-             // Assign camera.
-             cameraTargets[id] = *unassignedTargets.begin();
-
-             // Flag target as assigned. 
-             unassignedTargets.erase(*unassignedTargets.begin());
-         }
-
-         return;
-     }
 };
 
 

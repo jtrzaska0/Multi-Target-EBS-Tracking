@@ -3,7 +3,7 @@
     "DEVICE_TYPE": "xplorer",
     "INTEGRATION_TIME_MS": 2.5,
     "ENABLE_TRACKING": true,
-    "COMMAND_METHOD": "dbscan-history",
+    "COMMAND_METHOD": "dbscan",
     "EPSILON": 100,
     "MAGNIFICATION": 0.0645,
     "ENABLE_LOGGING": true,
@@ -51,7 +51,7 @@
     },
 
     "EBS_EPSILON": 12,
-    "EBS_NUM_PTS": 3,
+    "EBS_NUM_PTS": 75,
     "EBS_TAU": 1.2,
     "NUM_STAGES": 1,
     "VERBOSE": false,

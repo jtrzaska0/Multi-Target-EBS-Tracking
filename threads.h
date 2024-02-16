@@ -394,7 +394,7 @@ void processing_threads(std::vector<StageController *>& ctrl, Buffers& buffers, 
 
     // Keep a registry of active targets.
     std::mutex reg_lock;
-    Registry registry(100, 200);
+    Registry registry(100, 40);
 
     // Launch the user thread. This section handles dynamic user input.
     std::thread user_input(
@@ -620,6 +620,7 @@ void camera_thread(StageCam * cam, StageController * ctrl, int height, int width
                 }
             }
         } else {
+            // If this is the first time out of fine-track, create a new KCF tracker.
             if (adjustTrack == true) {
                 adjustTrack == false;
                 tracker = cv::TrackerKCF::create();
@@ -678,7 +679,7 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
         if (n == i)
             attron(A_REVERSE);
 
-        printw("%sE - ", camera_names[n-1].c_str()); // An 'E' indicates coarse-tracking with EBS.
+        printw("%sE", camera_names[n-1].c_str()); // An 'E' indicates coarse-tracking with EBS.
 
         if (n == i)
             attroff(A_REVERSE);
@@ -686,8 +687,9 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
 
     // Setup the ncurses window.
     initscr();
-    //noecho();   // Do not write echo user input to the screen.
+    noecho();   // Do not write echo user input to the screen.
     keypad(stdscr, true);
+    //timeout(100);
     refresh();
 
     box(stdscr, 0, 0);
@@ -707,8 +709,8 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
             if (n == i)
                 attron(A_REVERSE);
 
-            std::string mode {dnn_enable[n-1] ? std::string("F - ") : std::string("E - ")};
-            printw("%s", (camera_names[n-1] + mode).c_str());
+            std::string mode {stages[n-1]->get_tracker_status() ? std::string("1") : std::string("0")};
+            printw("%s", (camera_names[n-1] + std::to_string(dnn_enable[i-1]) + " " + mode).c_str());
 
             if (n == i)
                 attroff(A_REVERSE);
@@ -734,17 +736,22 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
                 break;
 
             // Selected the highlighted target.
-            case KEY_ENTER: 
-                printw("     "); // Expecting only a few characters or so five or so spaces should delete existing.
+            case '\n': 
+                // Increase timeout time to allow user to enter input.
+                //timeout(2000);
+                move(i, name_width);
+                printw("     "); // Expecting only a few characters so five or so spaces should delete existing.
+                move(i, name_width);
 
                 switch(c = getch()) {
                     case 'f': // Put selected into fine track.
                         if (dnn_enable[i-1] == true)
                             break;
 
+                        dnn_enable[i-1] = true; 
                         move(i, name_width);
-                        printw("%s", "F - \0");
-                        dnn_enable[i-1] = true;
+                        printw("%s", "1\0");
+                        refresh();
 
                         break;
 
@@ -752,25 +759,31 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
                         if (dnn_enable[i-1] == false)
                             break;
 
-                        move(i, name_width);
-                        printw("%s", "E - \0");
+                        stages[i-1]->deactivate_fine();
                         dnn_enable[i-1] = false;
+                        move(i, name_width);
+                        printw("%s", "0\0");
+                        refresh();
 
                         break;
 
                     case 's': // Switch to a new target. 
+                        // Read characters until the user presses enter.
+                        // The read string will be the target ID.
                         while ((c = getch()) != '\n') {
                             buf[bidx] = (char) c;
                             bidx++;
                         }
 
                         buf[bidx] = '\0';
-
+                
+                        // Get the list of known targets.
                         int selected {std::stoi(std::string(buf))};
                         auto targs {reg->currentTracks()};
                         if (!targs.contains(selected))
                             break;
 
+                        // Move to image the selected target.
                         int status = move_stage(
                             stages[i-1], 
                             i-1,
@@ -778,6 +791,16 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
                             targs[selected]
                         );
 
+                        // Put the camera into fine track for the new target.
+                        dnn_enable[i-1] = false;
+                        stages[i-1]->deactivate_fine();
+                        move(i, name_width);
+                        printw("%s", "1\0");
+                        refresh();
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        dnn_enable[i-1] = true;
+
+                        // End the program if a stage error occurred.
                         if (status != 0)
                             active = false;
 
@@ -797,7 +820,8 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
 
         move(i, name_width);
         refresh();
-        std::this_thread::sleep_for(std::chrono::milliseconds(15));
+        //timeout(100);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
     // Close ncurses.

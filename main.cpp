@@ -400,6 +400,8 @@ int main(int argc, char *argv[]) {
     else
         ret = read_davis(buffers, debug, noise_params, enable_filter, event_file, start_time, active);
 
+    assert(ret == EXIT_SUCCESS);
+
     // Wait for all threads to terminate.
     processor.join();
     for (auto& th : cameraThreads)
@@ -421,6 +423,9 @@ int main(int argc, char *argv[]) {
         delete cameraThreads[n];
     }    
 
+    // Give the stages time to shutdown.
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
     // Stop video streaming and save movies.
     cv::destroyAllWindows();
     std::cerr << "Processing event videos..\n";
@@ -429,7 +434,7 @@ int main(int argc, char *argv[]) {
 
     std::cerr << "Processing camera videos.\n";
     for (int n {0}; n < num_stages; ++n)
-        createVideoFromImages("./camera" + std::to_string(n) + "_images" + std::to_string(n), "camera" + std::to_string(n) + "_output.mp4", video_fps[n]);
+        createVideoFromImages("./camera" + std::to_string(n) + "_images", "camera" + std::to_string(n) + "_output.mp4", video_fps[n]);
 
     return ret;
 }
