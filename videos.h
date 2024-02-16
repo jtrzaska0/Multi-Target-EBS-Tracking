@@ -95,7 +95,8 @@ void createVideoFromImages(const std::string& directoryPath, const std::string& 
         bar.update();
         elapsed_time += ms_per_frame;
     }
-    printf("\n");
+
+    std::cerr << "\n";
     videoWriter.release();
-    std::cout << "Video created: " << outputVideoPath << std::endl;
+    std::cerr << "Video created: " << outputVideoPath << std::endl;
 }

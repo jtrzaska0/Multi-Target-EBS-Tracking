@@ -7,6 +7,7 @@
 # include <string>
 # include <fstream>
 # include <cassert>
+# include <atomic>
 # include <nlohmann/json.hpp>
 # include <sys/stat.h>
 
@@ -35,7 +36,7 @@ bool deleteDirectory(const std::string& directoryPath) {
 
     try {
         std::filesystem::remove_all(directoryPath);
-        std::cout << "Directory deleted: " << directoryPath << std::endl;
+        std::cerr << "Directory deleted: " << directoryPath << std::endl;
         return true;
     } catch (const std::filesystem::filesystem_error& e) {
         std::cerr << "Failed to delete directory: " << e.what() << std::endl;
@@ -68,6 +69,13 @@ int main(int argc, char *argv[]) {
     Ret:
         0
     */
+
+    // We'll use ncurses to control program behavior. This requires
+    // keeping controlling writes to stdout, which is partially
+    // accomplished by redirecting standard error.
+    std::ofstream err("err.log", std::ios::trunc);
+    std::streambuf * err_buffer {err.rdbuf()};
+    std::cerr.rdbuf(err_buffer);
 
     // Locate onnx file.
     std::string onnx_loc = {std::string(argv[2])};
@@ -148,7 +156,7 @@ int main(int argc, char *argv[]) {
     std::vector<double> kp_coarse(num_stages); 
     std::vector<double> ki_coarse(num_stages); 
     std::vector<double> kd_coarse(num_stages); 
-    std::vector<bool> enable_dnn(num_stages);
+    std::vector<std::atomic<bool>> enable_dnn(num_stages);
     std::vector<bool> enable_pid(num_stages);
     std::vector<int> video_fps(num_stages);
     std::vector<double> confidence_thres(num_stages);
@@ -265,7 +273,7 @@ int main(int argc, char *argv[]) {
 
             // Feed argc_n, argv_n to estrap.
             if ((cer[n] = estrap_in(3, estrap_in_input)) == nullptr) {
-                printf("Failed to connect to stage.\n");
+                std::cerr << "Failed to connect to stage " + std::to_string(n) + ".\n";
                 return 1;
             }
 
@@ -298,7 +306,6 @@ int main(int argc, char *argv[]) {
                              event_file, enable_event_log, cer[n], enable_pid[n], fine_overshoot_time[n], coarse_overshoot_time[n],
                              overshoot_thres[n], update_time[n], stage_update[n], verbose, n)
         };
-         std::this_thread::sleep_for(std::chrono::milliseconds(50000));
  
         stageControllers.push_back(ptr);
     }
@@ -343,7 +350,7 @@ int main(int argc, char *argv[]) {
 
         // Could not create directories for data storage.
         if (!makeDirectory("./camera" + std::to_string(n) +"_images")) {
-            std::cout << "Failed to create frame storage for a camera. Aborting.\n";
+            std::cerr << "Failed to create frame storage for a camera. Aborting.\n";
             exit(EXIT_SUCCESS);
         }
     }
@@ -368,19 +375,26 @@ int main(int argc, char *argv[]) {
         begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, verbose
     );
  
-    std::thread processor(processing_threads, std::ref(stageControllers), std::ref(buffers), algo, std::ref(proc_init), start_time, debug, std::ref(active));
+    std::thread processor(processing_threads, std::ref(stageControllers), std::ref(buffers), 
+        algo, std::ref(proc_init), std::ref(enable_dnn), start_time, debug, std::ref(active));
 
     // Start up the cameras.
     std::vector<std::thread *> cameraThreads;
     for (int n {0}; n < num_stages; ++n) {
-        std::thread * ptr {new std::thread(camera_thread, std::ref(*stageCams[n]), std::ref(*stageControllers[n]), cam_heights[n], cam_widths[n], nfov_hfovx[n], nfov_hfovy[n], 
-            onnx_loc, enable_stage[n], enable_dnn[n], start_time, confidence_thres[n], debug, std::ref(active), n)
+        std::thread * ptr {new std::thread(
+            camera_thread, 
+            stageCams[n], 
+            stageControllers[n], 
+            cam_heights[n], cam_widths[n], 
+            nfov_hfovx[n], nfov_hfovy[n], 
+            std::ref(onnx_loc), enable_stage[n], 
+            std::ref(enable_dnn[n]), start_time, confidence_thres[n], debug, std::ref(active), n)
         };
         
         cameraThreads.push_back(ptr);
     }
 
-    // Start collecting evetnts.
+    // Start collecting events.
     if (device_type == "xplorer")
         ret = read_xplorer(buffers, debug, noise_params, enable_filter, event_file, start_time, active);
     else
@@ -393,9 +407,6 @@ int main(int argc, char *argv[]) {
 
     // Begin shutdown.
     for (int n {0}; n < num_stages; ++n) {
-        // Shutdown the stage controller.
-        stageControllers[n]->shutdown();
- 
         // Reset the stages.
         if (cer[n]) {
             cpi_ptcmd(cer[n], &status[n], OP_PAN_DESIRED_SPEED_SET, 9000);
@@ -403,15 +414,20 @@ int main(int argc, char *argv[]) {
             cpi_ptcmd(cer[n], &status[n], OP_PAN_DESIRED_POS_SET, 0);
             cpi_ptcmd(cer[n], &status[n], OP_TILT_DESIRED_POS_SET, 0);
         }
-    }
+
+        // Shutdown the cameras and their stage controllers.
+        delete stageControllers[n];
+        delete stageCams[n];
+        delete cameraThreads[n];
+    }    
 
     // Stop video streaming and save movies.
     cv::destroyAllWindows();
-    printf("Processing event videos..\n");
+    std::cerr << "Processing event videos..\n";
     for (int n {0}; n < num_stages; ++n)
         createVideoFromImages("./event_images", "ebs_output.mp4", video_fps[n]);
 
-    printf("Processing camera videos.\n");
+    std::cerr << "Processing camera videos.\n";
     for (int n {0}; n < num_stages; ++n)
         createVideoFromImages("./camera" + std::to_string(n) + "_images" + std::to_string(n), "camera" + std::to_string(n) + "_output.mp4", video_fps[n]);
 

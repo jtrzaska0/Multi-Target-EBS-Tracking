@@ -1,6 +1,6 @@
 // File     utils.h
 // Summary  Utility function for data passing and display.
-// Authors  Trevor Schlackt - Modified by Jacob Trzaska
+// Authors  Trevor Schlackt, Jacob Trzaska
 # pragma once
 
 // Standard imports
@@ -8,6 +8,13 @@
 # include <armadillo>
 # include <mlpack.hpp>
 # include <utility>
+# include <map>
+# include <set>
+# include <algorithm>
+# include <functional>
+# include <thread>
+# include <mutex>
+
 
 // Local imports
 # include "controller.h"
@@ -15,6 +22,344 @@
 
 // Namespacing
 using json = nlohmann::json;
+
+
+Eigen::MatrixXd cDist(Eigen::MatrixXd A, Eigen::MatrixXd B) {
+     /*
+     This function is based off the SciPy method of the 
+     same name.
+
+     Args:
+          A: First matrix. Vectors stored as rows.
+          B. Second matrix. Vectors stored as rows.
+
+     Ret:
+          Eigen matrix whose elements are the euclidean 2-norm between
+          each of the vector
+     */
+
+     Eigen::MatrixXd D {Eigen::MatrixXd::Zero(A.rows(), B.rows())};
+
+     for (int i {0}; i < A.rows(); ++i)
+          for (int j {0}; j < B.rows(); ++j) {
+               Eigen::ArrayXXd arr { (A.row(i) - B.row(j)).array() }; 
+               D(i, j) = (arr * arr).sum();
+          }
+
+     return D;
+}
+
+
+class Registry {
+     /*
+     Log targets using a nearest-neighbor algorithm.
+     */
+
+     private:
+     // Keep a list of target IDs.
+     unsigned long int nextID {0};
+
+     // Ordered dictionary of target information.
+     std::map<int, Eigen::MatrixXd> targets;
+
+     // Number of frames each target has been missing.
+     std::map<int, int> numFramesLost;
+
+     // Set thresholds.
+     int maxNumFramesLost;
+     double distThreshold;
+
+    // Prevent a race condition.
+    std::mutex lock;
+
+     public:
+     Registry(int mNumFrLost,  double distTh) : nextID {0} {
+          /*
+          Constructor.
+
+          Args:
+               mNumFrLost: Max number of frames missing.
+               distTh: Maximum distance a detection may be from an already registered object
+                       to be considered as from that object.
+
+          Ret:
+               None
+          */
+         
+          // Set thresholds.
+          maxNumFramesLost = mNumFrLost;
+          distThreshold = distTh;
+
+          return;
+     }
+
+     ~Registry() {}
+
+
+     void update(Eigen::MatrixXd meas) {
+          /*
+          Use the most recent set of measurements to update the target states.
+
+          Args:
+               meas: Each row is a single datum (vector).
+
+          Ret:
+               None. This function purely updates the state of the tracker.
+          */
+
+          // Prevent a read during writing.
+          lock.lock();          
+
+          // Store IDs that need deregistering.
+          std::vector<int> rmIds;
+
+          // Check if 'meas' is empty.
+          if (meas.rows() == 0) {
+               // Deregister objects if they are lost.
+               for (std::map<int, int>::iterator targ = numFramesLost.begin(); targ != numFramesLost.end(); ++targ) {
+                    int ID {targ->first};
+                    ++numFramesLost[ID];
+
+                    if (numFramesLost[ID] > maxNumFramesLost)
+                         rmIds.push_back(ID);
+               }
+
+               // Deregister missing targets.
+               for (auto ID : rmIds)
+                    deRegister(ID);
+
+               lock.unlock();
+
+               return;
+          }
+
+          // Track new objects if none are currently tracked.
+          if (targets.size() == 0) {
+               for (int i {0}; i < meas.rows(); ++i)
+                    Register(meas(i, Eigen::all));
+          } else {
+               // Make a vector of active target IDs and of target centroids.
+               std::vector<int> targIDs(targets.size());
+               Eigen::MatrixXd targCentroids {Eigen::MatrixXd::Zero(targets.size(), 2)};
+               int k = 0;
+               for (std::map<int, Eigen::MatrixXd>::iterator iter = targets.begin(); iter != targets.end(); ++iter) {
+                    targIDs[k] = iter->first;
+                    targCentroids(k, Eigen::all) = (iter->second);
+                    ++k;
+               }
+
+               // Evaluate pairwise distances for each existing target and detection.
+               Eigen::MatrixXd D {cDist(targCentroids, meas)};
+               // Find the minimum element in each row and sort the row indices by their min values.
+               std::map<double, int> rmap;
+               for (int i {0}; i < D.rows(); ++i)
+                    rmap[D.row(i).minCoeff()] = i;
+
+               // Keep track of which rows and columns have been associated.
+               std::set<int> activeRows;
+               std::set<int> activeCols;
+               
+               for (int l {0}; l < D.rows(); ++l)
+                    activeRows.insert(l);
+               for (int l {0}; l < D.cols(); ++l)
+                    activeCols.insert(l);
+
+               if (D.rows() >= D.cols()) {
+                    // For each row index, check if the nearest detection is within threshold.
+                    // If so, update that row. Otherwise, do nothing.
+                    for (auto iter {rmap.begin()}; iter != rmap.end(); ++iter) {
+                         // Get row index
+                         int ridx {iter->second};
+                         // Break from the loop if all the columns have been exhausted.
+                         if (activeCols.size() == 0)
+                              break;
+
+                         // Find the nearest detection.
+                         std::ptrdiff_t I, J;
+                         std::vector<int> ac(activeCols.size());
+                         std::copy(activeCols.begin(), activeCols.end(), ac.begin());
+
+                         D(ridx, ac).minCoeff(&I, &J);
+                         int cidx {ac[J]};
+
+                         // Update current target.
+                         int ID {targIDs[ridx]};
+                         if (D(ridx, cidx) < distThreshold * distThreshold) {
+                              numFramesLost[ID] = 0;
+                              targets[ID] = meas(cidx, Eigen::all);
+                         } else {
+                              ++numFramesLost[ID];
+                              // Deregister missing targets.
+                              if (numFramesLost[ID] > maxNumFramesLost)
+                                   rmIds.push_back(ID);
+                         }
+
+                         // Eliminate used rows and columns.
+                         std::set<int> resR;
+                         std::set<int> resC;
+                         std::set<int> R {ridx};
+                         std::set<int> C {cidx};
+
+                         std::set_difference(
+                             activeRows.begin(), 
+                             activeRows.end(), 
+                             R.begin(), 
+                             R.end(), 
+                             std::inserter(resR, resR.end())
+                         );
+
+                         activeRows = resR;
+
+                         std::set_difference(
+                             activeCols.begin(), 
+                             activeCols.end(), 
+                             C.begin(), 
+                             C.end(), 
+                             std::inserter(resC, resC.end())
+                         );
+
+                         activeCols = resC;
+                    }
+                   
+                    // Update the remaining targets and their predicted states. 
+                    for (auto& ridx : activeRows) {
+                         int ID {targIDs[ridx]};
+                         ++numFramesLost[ID];
+                         if (numFramesLost[ID] > maxNumFramesLost)
+                              rmIds.push_back(ID);
+                    }
+
+               } else {
+                    // There are more detections than there are active tracks, i.e., D.cols() > D.rows().
+                    // For each row index, check if the nearest detection is within threshold. If so,
+                    // update that row. Otherwise, check miss status.
+                    for (auto iter = rmap.begin(); iter != rmap.end(); ++iter) {
+                         // Get row index
+                         int ridx {iter->second}; 
+                         // Break from the loop if all the rows have been exhausted.
+                         if (activeRows.size() == 0)
+                              break;
+
+                         // Find the nearest detection.
+                         std::ptrdiff_t I, J;
+                         std::vector<int> ac(activeCols.size());
+                         std::copy(activeCols.begin(), activeCols.end(), ac.begin());
+
+                         D(ridx, ac).minCoeff(&I, &J);
+                         int cidx {ac[J]};
+
+                         // Update current target.
+                         int ID {targIDs[ridx]};
+                         if (D(ridx, cidx) < distThreshold * distThreshold) {
+                              numFramesLost[ID] = 0;
+                              targets[ID] = meas(cidx, Eigen::all);
+                         } else {
+                              ++numFramesLost[ID];
+                              // Deregister if missing.
+                              if (numFramesLost[ID] > maxNumFramesLost)
+                                   rmIds.push_back(ID);
+                         }
+
+                         // Eliminate used rows and columns.
+                         std::set<int> resR;
+                         std::set<int> resC;
+                         std::set<int> R {ridx};
+                         std::set<int> C {cidx};
+
+                         std::set_difference(activeRows.begin(), 
+                             activeRows.end(), 
+                             R.begin(), 
+                             R.end(), 
+                             std::inserter(resR, resR.end())
+                         );
+
+                         activeRows = resR;
+
+                         std::set_difference(
+                             activeCols.begin(), 
+                             activeCols.end(), 
+                             C.begin(), 
+                             C.end(), 
+                             std::inserter(resC, resC.end())
+                        );
+
+                         activeCols = resC;
+                    }
+
+                    // Use the remaining detections to initialize new tracks.
+                    for (auto& cidx : activeCols) {
+                         Register(meas(cidx, Eigen::all));
+                    }
+               }
+          }
+
+          // Deregister missing targets.
+          for (auto ID : rmIds)
+               deRegister(ID);
+
+          lock.unlock();
+
+          return;
+     }
+
+
+     std::map<int, Eigen::MatrixXd> currentTracks() {
+          /*
+          Read out the current target positions.
+
+          Args:
+               None
+
+          Ret:
+               List of current objects tracked.
+          */
+
+          lock.lock();
+          std::map<int, Eigen::MatrixXd> retTargets {targets};
+          lock.unlock();
+
+          return retTargets;
+     }
+
+
+     private:
+     void Register(Eigen::MatrixXd centroid) {
+          /*
+          Add a new target to the list of tracked objects.
+
+          Args:
+               centroid: Location of new target.
+
+          Ret:
+               None
+          */
+
+          // Add the target and increment the ID counter.
+          targets[nextID] = centroid;
+          numFramesLost[nextID] = 0;
+          ++nextID;
+
+          return;
+     }
+
+
+     void deRegister(int ID) {
+          /*
+          Remove a target from the tracking list.
+
+          Args:
+               objKey: Dictionary key for object being removed.
+
+          Ret:
+               None
+          */
+
+          numFramesLost.erase(ID);
+          targets.erase(ID);
+
+          return;
+    }
+};
 
 
 class ProcessingInit {
@@ -276,6 +621,7 @@ arma::mat run_tracker(std::vector<double> events, double dt, DBSCAN_KNN T, bool 
     return positions_vector_to_matrix(positions);
 }
 
+
 arma::mat get_position(const std::string &method, arma::mat &positions, arma::mat &previous_positions, double eps,
                        std::binary_semaphore *update_positions) {
     /*
@@ -393,17 +739,57 @@ arma::mat get_position(const std::string &method, arma::mat &positions, arma::ma
 
 WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &event_info, arma::mat positions,
                             arma::mat& prev_positions, std::binary_semaphore *update_positions, int prev_x,
-                            int prev_y, int n_samples, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
+                            int prev_y, int n_samples, std::chrono::time_point<std::chrono::high_resolution_clock> start,
+                            Registry * reg) {
+    /*
+    Construct boxes for the next event frame.
+
+    Args:
+        proc_init: Globally important program parameters.
+        event_info:      
+        positions:       Matrix of current positions.
+        prev_positions:  Matrix of previous target locations.
+        update_position: ?
+        prev_x:          ?
+        prev_y:          ?
+        n_samples:       ?
+        start:           Program start time.
+        reg:             Global registry of target positions.
+
+    Ret:
+        A WindowInfo object.
+
+    Notes:
+        None.
+    */
+
     int y_increment = (int) (proc_init.mag * proc_init.Ny / 2);
     int x_increment = (int) (y_increment * proc_init.Nx / proc_init.Ny);
     std::string positions_string;
     arma::mat stage_positions;
 
     if (proc_init.enable_tracking) {
+        // Filter the detected clusters.
         int thickness = 2;
         int x_min, x_max, y_min, y_max;
-        stage_positions = get_position(proc_init.position_method, positions, prev_positions, proc_init.eps, update_positions);
+        stage_positions = get_position(
+            proc_init.position_method, 
+            positions, prev_positions, 
+            proc_init.eps, 
+            update_positions
+        );
 
+        // Update the global target listings.
+        reg->update(
+            armaToEigen(stage_positions).transpose()
+        );
+
+        std::map<int, Eigen::MatrixXd> targets {reg->currentTracks()};
+
+        // Smooth out cluster positions by averaging.
+        // Not exactly sure what this is doing. Seems to be for tracking the
+        // target location, assuming that only one is present. Will Kalman
+        // filter in the Registry if needed.
         int first_x = 0;
         int first_y = 0;
         if (stage_positions.n_cols > 0) {
@@ -417,9 +803,11 @@ WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &ev
                     n_samples = 0;
             }
         }
+
         prev_x = first_x;
         prev_y = first_y;
 
+        // Show all detected clusters. Blue boxes.
         for (int i = 0; i < (int) positions.n_cols; i++) {
             int x = (int) positions(0, i);
             int y = (int) positions(1, i);
@@ -439,9 +827,12 @@ WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &ev
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> timestamp_ms = end - start;
-        for (int i = 0; i < stage_positions.n_cols; i++) {
-            int x_stage = (int) stage_positions(0, i);
-            int y_stage = (int) stage_positions(1, i);
+
+        // Show filtered clusters. Red boxes.
+        int num_targs {0};
+        for (std::map<int, Eigen::MatrixXd>::iterator iter {targets.begin()}; iter != targets.end(); ++iter) {
+            int x_stage = (int) (iter->second)(0, 0);
+            int y_stage = (int) (iter->second)(0, 1);
             y_min = std::max(y_stage - y_increment, 0);
             x_min = std::max(x_stage - x_increment, 0);
             y_max = std::min(y_stage + y_increment, proc_init.Ny - 1);
@@ -450,17 +841,28 @@ WindowInfo calculate_window(const ProcessingInit &proc_init, const EventInfo &ev
             cv::Point p1_stage(x_min, y_min);
             cv::Point p2_stage(x_max, y_max);
             rectangle(event_info.event_image, p1_stage, p2_stage, cv::Scalar(0, 0, 255), thickness, cv::LINE_8);
-
+            cv::putText(
+                event_info.event_image  ,     // Window.
+                std::to_string(iter->first),  // Text.
+                cv::Point(x_min, y_min),      // Bottom-left corner of the text string.
+                cv::FONT_HERSHEY_DUPLEX,      // Font face.
+                1.5,                          // Font scale.
+                CV_RGB(0, 0, 255),            // Color.
+                2                             // Line thickness.
+            );
+ 
             if (proc_init.enable_event_log) {
                 positions_string += std::to_string(timestamp_ms.count()) + ",";
                 positions_string += std::to_string(x_stage) + ",";
                 positions_string += std::to_string(y_stage);
             }
+
+            ++num_targs;
         }
 
         if (proc_init.verbose) {
             cv::putText(event_info.event_image,
-                        std::string("Objects: ") + std::to_string((int) (stage_positions.size() / 2)), //text
+                        std::string("Objects: ") + std::to_string((int) (num_targs / 2)), //text
                         cv::Point((int) (0.05 * proc_init.Nx), (int) (0.95 * proc_init.Ny)),
                         cv::FONT_HERSHEY_DUPLEX,
                         0.5,
@@ -521,7 +923,8 @@ EventInfo read_packets(std::vector<double> events, int Nx, int Ny, bool enable_e
 // return a cv mat for plotting and an arma mat for stage positions
 WindowInfo process_packet(const std::vector<double>& events, const DBSCAN_KNN& T, const ProcessingInit &proc_init,
                           const WindowInfo& prev_window, arma::mat& prev_positions,
-                          std::binary_semaphore *update_positions, std::chrono::time_point<std::chrono::high_resolution_clock> start) {
+                          std::binary_semaphore *update_positions, std::chrono::time_point<std::chrono::high_resolution_clock> start,
+                          Registry * reg) {
     /*
     Get target detections and tracks from the newest set of events.
 
@@ -532,6 +935,8 @@ WindowInfo process_packet(const std::vector<double>& events, const DBSCAN_KNN& T
         prev_window:   Previoous window.
         prev_position: Previous target locations.
         update_positions: Indicates whether or not to update stage positions.
+        start: When tracking began.
+        reg: Global target registry.
 
     Ret:
         A WindowInfo structure containing possible target positions and data for windows.
@@ -555,21 +960,17 @@ WindowInfo process_packet(const std::vector<double>& events, const DBSCAN_KNN& T
     EventInfo event_info {fut_event_info.get()};
 
     // Get data regarding possible target locations.
-    WindowInfo tracking_info {
-        calculate_window(
-            proc_init, 
-            event_info, 
-            positions, 
-            prev_positions, 
-            update_positions,
-            prev_window.prev_x, 
-            prev_window.prev_y, 
-            prev_window.n_samples, 
-            start
-        )
-    };
-
-    return tracking_info;
+    return calculate_window(
+        proc_init, 
+        event_info, 
+        positions, 
+        prev_positions, 
+        update_positions,
+        prev_window.prev_x, 
+        prev_window.prev_y, 
+        prev_window.n_samples, 
+        start, reg
+    );
 }
 
 
@@ -582,9 +983,9 @@ StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit 
     Update stage positions using clusters from the event-based tracking algorithm.
 
     Args:
-        ctrl:      Collection of stage controller pointers.
-        proc_init: Globally important program parameters.
-        positions: Locations of possible targets.
+        ctrl:       Collection of stage controller pointers.
+        proc_init:  Globally important program parameters.
+        positions:  Locations of possible targets.
         prev_pans:  Previous pan angles.
         prev_tilts: Previous tilt angles.
 
@@ -603,7 +1004,7 @@ StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit 
     // Assign cameras to targets.
     for (int n {0}; n < N && n < positions.n_cols; ++n)
         if (proc_init.enable_stage[n]) {
-            // Go to first position in list. Selecting between objects to be implemented later.
+            // Go straight down the list.
             double x { positions(0, n) - ((double) proc_init.Nx / 2) };
             double y { ((double) proc_init.Ny / 2) - positions(1, n) };
     
@@ -642,12 +1043,68 @@ StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit 
     return info;
 }
 
+
+int move_stage(StageController * ctrl, int idx, const ProcessingInit &proc_init, Eigen::MatrixXd positions) {
+    /*
+    Update stage positions using clusters from the event-based tracking algorithm.
+
+    Args:
+        ctrl:       Collection of stage controller pointers.
+        idx:        Stage ID.
+        proc_init:  Globally important program parameters.
+        positions:  Locations of possible targets.
+
+    Ret:
+        Details on the new stage configurations.
+
+    Notes:
+        None.
+    */
+
+    // Assign cameras to targets.
+    if (proc_init.enable_stage[idx]) {
+        // Go straight down the list.
+        double x { positions(0, 0) - ((double) proc_init.Nx / 2) };
+        double y { ((double) proc_init.Ny / 2) - positions(0, 1) };
+    
+       double theta { get_theta(y, proc_init.Ny, proc_init.hfovy) };
+       double phi { get_phi(x, proc_init.Nx, proc_init.hfovx) };
+
+       double theta_prime {
+            get_theta_prime(
+                phi, theta, proc_init.offset_x[idx], proc_init.offset_y[idx], proc_init.offset_z[idx], proc_init.r_center[idx], proc_init.arm[idx]
+            )
+        };
+
+        double phi_prime {
+            get_phi_prime(
+                phi, proc_init.offset_x[idx], proc_init.offset_y[idx], proc_init.r_center[idx]
+            )
+        };
+
+        int pan_position {
+            get_motor_position(
+                proc_init.begin_pan[idx], proc_init.end_pan[idx], proc_init.begin_pan_angle[idx], proc_init.end_pan_angle[idx], phi_prime
+            )
+        };
+
+        // Convert tilt to FLIR frame
+        theta_prime = M_PI_2 - theta_prime;
+        int tilt_position = get_motor_position(proc_init.begin_tilt[idx], proc_init.end_tilt[idx],
+                                                proc_init.begin_tilt_angle[idx], proc_init.end_tilt_angle[idx], theta_prime);
+
+        ctrl->update_setpoints(pan_position + proc_init.pan_offset[idx], tilt_position + proc_init.tilt_offset[idx]);
+    }
+
+    return 0;
+}
+
 std::tuple<StageInfo, WindowInfo>
 read_future(std::vector<StageController *>& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
             const StageInfo &prevStage, std::ofstream &detectionsFile, std::ofstream &eventFile,
             std::chrono::time_point<std::chrono::high_resolution_clock> start) {
     /*
-    Get the data from packet processing.
+    Get the data from packet processing and move the stages.
 
     Args:
         ctrl:           Collection of stage controller pointers.

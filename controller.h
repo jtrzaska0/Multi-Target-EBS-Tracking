@@ -306,26 +306,6 @@ class StageController {
             cpi_ptcmd(cer, &status, OP_PAN_CURRENT_POS_GET, &current_pan);
             cpi_ptcmd(cer, &status, OP_TILT_CURRENT_POS_GET, &current_tilt);
 
-            if (key_is_pressed(XK_Up)) {
-                tilt_offset += 1;
-                printf("Tilt Offset: %d steps\n", tilt_offset);
-            }
-
-            if (key_is_pressed(XK_Down)) {
-                tilt_offset -= 1;
-                printf("Tilt Offset: %d steps\n", tilt_offset);
-            }
-
-            if (key_is_pressed(XK_Left)) {
-                pan_offset -= 1;
-                printf("Pan Offset: %d steps\n", pan_offset);
-            }
-
-            if (key_is_pressed(XK_Right)) {
-                pan_offset += 1;
-                printf("Pan Offset: %d steps\n", pan_offset);
-            }
-
             auto stop_time = std::chrono::high_resolution_clock::now();
             auto command_time = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
 
@@ -375,7 +355,7 @@ class StageController {
                 update_log(pan_command, tilt_command);
                 last_update = std::chrono::high_resolution_clock::now();
             }
-
+            /*
             if (verbose) {
                 printf("Pan Change: %d steps\nTilt Change: %d steps\n", pan_change, tilt_change);
                 printf("Pan Velocity: %0.3f steps/ms\nTilt Velocity: %0.3f steps/ms\n", pan_velocity, tilt_velocity);
@@ -383,7 +363,7 @@ class StageController {
                 printf("Pan Offset: %d steps\nTilt Offset: %d steps\n", pan_offset, tilt_offset);
                 printf("Pan Command: %d steps\nTilt Command: %d steps\n", pan_command, tilt_command);
                 printf("Stage MovedL %d\n\n", (int)move);
-            }
+            }*/
 
             start_time = std::chrono::high_resolution_clock::now();
         }
