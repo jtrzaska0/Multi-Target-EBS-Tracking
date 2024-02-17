@@ -147,7 +147,7 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
 
-    while (!globalShutdown.load(std::memory_order_relaxed) && active) {
+    while (!globalShutdown.load(std::memory_order_relaxed) && !active) {
         if (debug)
             ;//printf("Started EBS acquisition.\n");
 
@@ -204,6 +204,7 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
     // Close automatically done by destructor.
     //printf("Shutdown successful.\n");
 
+    std::cout << "Leaving xplorer.\n";
     return (EXIT_SUCCESS);
 }
 
@@ -421,7 +422,7 @@ void processing_threads(std::vector<StageController *>& ctrl, Buffers& buffers, 
         buffers.PacketQueue.pop();
 
         std::tie(prev_stageInfo, prev_trackingInfo) =
-                read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start);
+                read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start, &registry);
 
         if (debug)
             ;//printf("Completed event processing.");
@@ -664,6 +665,7 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
     */
 
     unsigned long num_stages {dnn_enable.size()};
+    std::atomic<bool> curr_dnn {true};
 
     // Setup the basic layout for the interface.
     std::string tmplt("Camera N - ");
@@ -740,7 +742,7 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
                 // Increase timeout time to allow user to enter input.
                 //timeout(2000);
                 move(i, name_width);
-                printw("     "); // Expecting only a few characters so five or so spaces should delete existing.
+                printw("          "); // Expecting only a few characters so 10 or so spaces should delete existing.
                 move(i, name_width);
 
                 switch(c = getch()) {
@@ -777,33 +779,23 @@ void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable,
 
                         buf[bidx] = '\0';
                 
-                        // Get the list of known targets.
-                        int selected {std::stoi(std::string(buf))};
-                        auto targs {reg->currentTracks()};
-                        if (!targs.contains(selected))
-                            break;
+                        // Change the tracked target.
+                        if (dnn_enable[i-1])
+                            curr_dnn = true;
+                        else
+                            curr_dnn = false;
 
-                        // Move to image the selected target.
-                        int status = move_stage(
-                            stages[i-1], 
-                            i-1,
-                            procInit, 
-                            targs[selected]
-                        );
-
-                        // Put the camera into fine track for the new target.
                         dnn_enable[i-1] = false;
+                        reg->assign(i-1, std::stoi(std::string(buf)));
                         stages[i-1]->deactivate_fine();
                         move(i, name_width);
                         printw("%s", "1\0");
                         refresh();
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                        dnn_enable[i-1] = true;
 
-                        // End the program if a stage error occurred.
-                        if (status != 0)
-                            active = false;
-
+                        // Give the stage time to slew before re-enabling DNN.
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        if (curr_dnn == true)
+                            dnn_enable[i-1] = true;
                         bidx = 0;
                 }
 

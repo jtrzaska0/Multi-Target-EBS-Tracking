@@ -55,7 +55,7 @@ class Registry {
      Log targets using a nearest-neighbor algorithm.
      */
 
-     private:
+     public:
      // Keep a list of target IDs.
      unsigned long int nextID {0};
 
@@ -1023,7 +1023,8 @@ WindowInfo process_packet(const std::vector<double>& events, const DBSCAN_KNN& T
 These last two functions are responsible for moving 
 the FLIR stage when the system in coarse-track.
 ***************************************************/
-StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit &proc_init, arma::mat positions, std::vector<int> prev_pans, std::vector<int> prev_tilts) {
+StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit &proc_init, arma::mat positions, std::vector<int> prev_pans, std::vector<int> prev_tilts,
+    Registry * reg) {
     /*
     Update stage positions using clusters from the event-based tracking algorithm.
 
@@ -1033,6 +1034,7 @@ StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit 
         positions:  Locations of possible targets.
         prev_pans:  Previous pan angles.
         prev_tilts: Previous tilt angles.
+        reg:        Global target registry.
 
     Ret:
         Details on the new stage configurations.
@@ -1047,11 +1049,12 @@ StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit 
     std::vector<int> tilts {prev_tilts};
 
     // Assign cameras to targets.
-    for (int n {0}; n < N && n < positions.n_cols; ++n)
-        if (proc_init.enable_stage[n]) {
+    for (int n {0}; n < N; ++n)
+        if (proc_init.enable_stage[n] && reg->cameraTargets[n] != -1) {
+            Eigen::MatrixXd target_position {reg->targets[reg->cameraTargets[n]]};
             // Go straight down the list.
-            double x { positions(0, n) - ((double) proc_init.Nx / 2) };
-            double y { ((double) proc_init.Ny / 2) - positions(1, n) };
+            double x { target_position(0, 0) - ((double) proc_init.Nx / 2) };
+            double y { ((double) proc_init.Ny / 2) - positions(1, 0) };
     
            double theta { get_theta(y, proc_init.Ny, proc_init.hfovy) };
            double phi { get_phi(x, proc_init.Nx, proc_init.hfovx) };
@@ -1089,65 +1092,10 @@ StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit 
 }
 
 
-int move_stage(StageController * ctrl, int idx, const ProcessingInit &proc_init, Eigen::MatrixXd positions) {
-    /*
-    Update stage positions using clusters from the event-based tracking algorithm.
-
-    Args:
-        ctrl:       Collection of stage controller pointers.
-        idx:        Stage ID.
-        proc_init:  Globally important program parameters.
-        positions:  Locations of possible targets.
-
-    Ret:
-        Details on the new stage configurations.
-
-    Notes:
-        None.
-    */
-
-    // Assign cameras to targets.
-    if (proc_init.enable_stage[idx]) {
-        // Go straight down the list.
-        double x { positions(0, 0) - ((double) proc_init.Nx / 2) };
-        double y { ((double) proc_init.Ny / 2) - positions(0, 1) };
-    
-       double theta { get_theta(y, proc_init.Ny, proc_init.hfovy) };
-       double phi { get_phi(x, proc_init.Nx, proc_init.hfovx) };
-
-       double theta_prime {
-            get_theta_prime(
-                phi, theta, proc_init.offset_x[idx], proc_init.offset_y[idx], proc_init.offset_z[idx], proc_init.r_center[idx], proc_init.arm[idx]
-            )
-        };
-
-        double phi_prime {
-            get_phi_prime(
-                phi, proc_init.offset_x[idx], proc_init.offset_y[idx], proc_init.r_center[idx]
-            )
-        };
-
-        int pan_position {
-            get_motor_position(
-                proc_init.begin_pan[idx], proc_init.end_pan[idx], proc_init.begin_pan_angle[idx], proc_init.end_pan_angle[idx], phi_prime
-            )
-        };
-
-        // Convert tilt to FLIR frame
-        theta_prime = M_PI_2 - theta_prime;
-        int tilt_position = get_motor_position(proc_init.begin_tilt[idx], proc_init.end_tilt[idx],
-                                                proc_init.begin_tilt_angle[idx], proc_init.end_tilt_angle[idx], theta_prime);
-
-        ctrl->update_setpoints(pan_position + proc_init.pan_offset[idx], tilt_position + proc_init.tilt_offset[idx]);
-    }
-
-    return 0;
-}
-
 std::tuple<StageInfo, WindowInfo>
 read_future(std::vector<StageController *>& ctrl, std::future<WindowInfo> &future, const ProcessingInit &proc_init,
             const StageInfo &prevStage, std::ofstream &detectionsFile, std::ofstream &eventFile,
-            std::chrono::time_point<std::chrono::high_resolution_clock> start) {
+            std::chrono::time_point<std::chrono::high_resolution_clock> start, Registry * reg) {
     /*
     Get the data from packet processing and move the stages.
 
@@ -1190,7 +1138,7 @@ read_future(std::vector<StageController *>& ctrl, std::future<WindowInfo> &futur
         saveImage(window_info.event_info.event_image, "./event_images", std::to_string(elapsed));
 
     // Use the event detections for move stage when in coarse track.
-    StageInfo stage_info = move_stage(ctrl, proc_init, window_info.stage_positions, prevStage.prev_pan, prevStage.prev_tilt);
+    StageInfo stage_info = move_stage(ctrl, proc_init, window_info.stage_positions, prevStage.prev_pan, prevStage.prev_tilt, reg);
     std::tuple<StageInfo, WindowInfo> ret = {stage_info, window_info};
 
     return ret;

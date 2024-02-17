@@ -56,7 +56,44 @@ bool makeDirectory(const std::string& directoryPath) {
     return true;
 }
 
-int main(int argc, char *argv[]) {
+class stream_redirection {
+    /*
+    Redirect a stream. This implementation was taken from an answer by 'Toby Speight' to
+    the question ""Why segment fault occurs when redirect outstream to a file." on 
+    StackOverflow.
+    */
+
+    private:
+    std::ostream& from;
+    std::ofstream to;
+    std::streambuf * const saved;
+
+    public:
+    stream_redirection(std::ostream& from, const std::string& filename) : 
+        from{from}, to {filename}, saved{from.rdbuf(to.rdbuf())} {
+        /*
+        Perform the redirection.
+        */
+
+        return;
+    }
+
+    stream_redirection(const stream_redirection&) = delete;
+
+    void operator=(const stream_redirection&) = delete;
+
+    ~stream_redirection() {
+        /*
+        Cleanup.
+        */
+
+        from.rdbuf(saved);
+    }
+};
+
+
+
+int main(int argc, char ** argv) {
     /*
 
     Args:
@@ -73,13 +110,18 @@ int main(int argc, char *argv[]) {
     // We'll use ncurses to control program behavior. This requires
     // keeping controlling writes to stdout, which is partially
     // accomplished by redirecting standard error.
-    std::ofstream err("err.log", std::ios::trunc);
-    std::streambuf * err_buffer {err.rdbuf()};
-    std::cerr.rdbuf(err_buffer);
+    std::ofstream err("err.log", std::ios::trunc | std::ios::out);
+    if (!err.good()) {
+        std::cout << "Could not create log file.\n";
+        return -1;
+
+    }
+
+    auto redirect {stream_redirection(std::cerr, "err.log")};
 
     // Locate onnx file.
     std::string onnx_loc = {std::string(argv[2])};
- 
+
     // Locate, load, and parse the json configuration file.
     std::string config_file = {std::string(argv[1])};
     std::ifstream f(config_file);
@@ -309,7 +351,7 @@ int main(int argc, char *argv[]) {
  
         stageControllers.push_back(ptr);
     }
- 
+
     // Ready the cameras on each stage.
     std::vector<StageCam *> stageCams;
     std::vector<double> nfov_hfovx(num_stages);
@@ -374,7 +416,7 @@ int main(int argc, char *argv[]) {
         pan_offset, tilt_offset, min_pan_pos, max_pan_pos, min_tilt_pos, max_tilt_pos,
         begin_pan_angle, end_pan_angle, begin_tilt_angle, end_tilt_angle, verbose
     );
- 
+
     std::thread processor(processing_threads, std::ref(stageControllers), std::ref(buffers), 
         algo, std::ref(proc_init), std::ref(enable_dnn), start_time, debug, std::ref(active));
 
@@ -409,6 +451,9 @@ int main(int argc, char *argv[]) {
 
     // Begin shutdown.
     for (int n {0}; n < num_stages; ++n) {
+        // Shut down the controller.
+        delete stageControllers[n];
+     
         // Reset the stages.
         if (cer[n]) {
             cpi_ptcmd(cer[n], &status[n], OP_PAN_DESIRED_SPEED_SET, 9000);
@@ -417,14 +462,12 @@ int main(int argc, char *argv[]) {
             cpi_ptcmd(cer[n], &status[n], OP_TILT_DESIRED_POS_SET, 0);
         }
 
-        // Shutdown the cameras and their stage controllers.
-        delete stageControllers[n];
+        // Shutdown the cameras.
         delete stageCams[n];
-        delete cameraThreads[n];
     }    
-
+ 
     // Give the stages time to shutdown.
-    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Stop video streaming and save movies.
     cv::destroyAllWindows();
