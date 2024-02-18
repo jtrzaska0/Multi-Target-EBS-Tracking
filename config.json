@@ -55,7 +55,7 @@
     "EBS_TAU": 1.2,
     "NUM_STAGES": 1,
     "VERBOSE": false,
-    "DEBUG": false
+    "DEBUG": false 
   },
 
   "NOISE_FILTER": {

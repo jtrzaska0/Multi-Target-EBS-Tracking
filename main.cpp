@@ -396,7 +396,7 @@ int main(int argc, char ** argv) {
             exit(EXIT_SUCCESS);
         }
     }
-
+    
     // Show events in a new window.
     cv::startWindowThread();
     cv::namedWindow("PLOT_EVENTS", 
@@ -471,7 +471,7 @@ int main(int argc, char ** argv) {
 
     // Stop video streaming and save movies.
     cv::destroyAllWindows();
-    std::cerr << "Processing event videos..\n";
+    std::cerr << "Processing event video..\n";
     for (int n {0}; n < num_stages; ++n)
         createVideoFromImages("./event_images", "ebs_output.mp4", video_fps[n]);
 

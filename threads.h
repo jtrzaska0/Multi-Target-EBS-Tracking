@@ -102,13 +102,17 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
 
     // Open a DAVIS, give it a device ID of 1, and don't care about USB bus or SN restrictions.
     auto handle = libcaer::devices::dvXplorer(1);
+    std::cerr << "DVXplorer opened.\n";
 
     // Let's take a look at the information we have on the device.
     auto xplorer_info = handle.infoGet();
 
-    //printf("%s --- ID: %d, Master: %d, DVS X: %d, DVS Y: %d, Logic: %d.\n", xplorer_info.deviceString,
-    //       xplorer_info.deviceID, xplorer_info.deviceIsMaster, xplorer_info.dvsSizeX, xplorer_info.dvsSizeY,
-    //       xplorer_info.logicVersion);
+    std::cerr << xplorer_info.deviceString << " --- ID: " <<  xplorer_info.deviceID << 
+                ",  Master: " << xplorer_info.deviceIsMaster << 
+                ", DVS X: "   << xplorer_info.dvsSizeX << 
+                ", DVS Y: "   << xplorer_info.dvsSizeY << 
+                ", Logic: "   << xplorer_info.logicVersion << 
+                ".\n"; 
 
     // Send the default configuration before using the device.
     // No configuration is sent automatically!
@@ -138,18 +142,22 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
 
     dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_ENABLE, noise_params.value("CAER_HOTPIXEL_ENABLE", true));
     dvsNoiseFilter.configSet(CAER_FILTER_DVS_HOTPIXEL_LEARN, noise_params.value("CAER_HOTPIXEL_LEARN", true));
+    std::cerr << "Event filters are set.\n";
 
     // Now let's get start getting some data from the device. We just loop in blocking mode,
     // no notification needed regarding new events. The shutdown notification, for example if
     // the device is disconnected, should be listened to.
     handle.dataStart(nullptr, nullptr, nullptr, &usbShutdownHandler, nullptr);
+    std::cerr << "Started streaming events from DVXplorer.\n";
 
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
+    std::cerr << "Enabled blocking data-get mode for with the DVXplorer.\n";
+    std::cerr << "EBS: active = " << active << "\n";
 
-    while (!globalShutdown.load(std::memory_order_relaxed) && !active) {
+    while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         if (debug)
-            ;//printf("Started EBS acquisition.\n");
+            std::cerr << "Started EBS acquisition.\n";
 
         std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = handle.dataGet();
@@ -191,20 +199,19 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
         auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop_processing - start);
         double eventRate = 1000000 * eventCount / (double)processing_duration.count();
 
-        rateFile << (double)total_duration.count() << "," << eventRate << "\n";
+        rateFile << (double)total_duration.count() << ", " << eventRate << ", " << events.size() << "\n";
         buffers.PacketQueue.push(events);
 
         if (debug)
-            ;//printf("Completed EBS acquisition.\n");
+            std::cerr << "Completed EBS acquisition.\n";
     }
 
     handle.dataStop();
     rateFile.close();
 
     // Close automatically done by destructor.
-    //printf("Shutdown successful.\n");
+    std::cerr << "Shutdown successful.\n";
 
-    std::cout << "Leaving xplorer.\n";
     return (EXIT_SUCCESS);
 }
 
@@ -300,7 +307,7 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
 
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         if (debug)
-            ;//printf("Started EBS acquisition.\n");
+            std::cerr << "Started EBS acquisition.\n";
 
         std::vector<double> events;
         std::unique_ptr<libcaer::events::EventPacketContainer> packetContainer = davisHandle.dataGet();
@@ -348,14 +355,14 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
         buffers.PacketQueue.push(events);
 
         if (debug)
-            ;//printf("Completed EBS acquisition.\n");
+            std::cerr << "Completed EBS acquisition.\n";
     }
 
     rateFile.close();
     davisHandle.dataStop();
 
     // Close automatically done by destructor.
-    //printf("Shutdown successful.\n");
+    std::cerr << "Shutdown successful.\n";
 
     return (EXIT_SUCCESS);
 }
@@ -624,6 +631,7 @@ void camera_thread(StageCam * cam, StageController * ctrl, int height, int width
             // If this is the first time out of fine-track, create a new KCF tracker.
             if (adjustTrack == true) {
                 adjustTrack == false;
+                ctrl->deactivate_fine();
                 tracker = cv::TrackerKCF::create();
             }
         }

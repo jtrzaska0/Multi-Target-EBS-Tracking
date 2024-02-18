@@ -1,6 +1,6 @@
 // File         controller.h
 // Summary      Class for controlling the FLIR stage.
-// Author       Trevor Schlackt - Modified by Jacob Trzaska
+// Authors      Trevor Schlackt, Jacob Trzaska
 # pragma once
 
 // Standard imports
@@ -140,7 +140,7 @@ class StageController {
     int update_thres;
     std::chrono::time_point<std::chrono::high_resolution_clock> last_update;
     bool verbose;
-
+    int  camIdx;
 
     public:
     StageController(double kp_coarse, double ki_coarse, double kd_coarse, double kp_fine, double ki_fine,
@@ -170,7 +170,7 @@ class StageController {
             event_file:     Logging file.
             enable_logging: Enable or disable logging.
             cer:            Pointer to FLIR stage control.
-            pid:            
+            pid:            Enable PID control.
             fine_time:
             coarse_time:
             overshoot_thres:
@@ -198,11 +198,15 @@ class StageController {
         this->update_time = update_time;
         this->update_thres = update_thres;
         this->verbose = verbose;
+        this->camIdx = n;
+
         if (cer) {
             ctrl_thread = std::thread(&StageController::ctrl_loop, this);
         } else {
             active = false;
         }
+
+        return;
     };
 
     // Move constructor
@@ -213,6 +217,9 @@ class StageController {
 
     ~StageController() {
         this->shutdown();
+        std::cout << "Camera " << camIdx << ": Shutdown.\n";
+
+        return;
     }
 
     void shutdown() {
@@ -220,44 +227,78 @@ class StageController {
             active = false;
             ctrl_thread.join();
         }
+
+        return;
     }
 
     void update_setpoints(int pan_target, int tilt_target) {
         if (!fine_active) {
-            update_mtx.lock();
+            std::lock_guard<std::mutex> mut(update_mtx);
             pan_setpoint = pan_target;
             tilt_setpoint = tilt_target;
-            update_mtx.unlock();
         }
+
+        return;
     };
 
     void increment_setpoints(int pan_inc, int tilt_inc) {
         if (fine_active) {
-            update_mtx.lock();
+            std::lock_guard<std::mutex> mut(update_mtx);
             pan_setpoint = current_pan + pan_inc;
             tilt_setpoint = current_tilt + tilt_inc;
-            update_mtx.unlock();
         }
+
+        return;
     };
 
     void activate_fine() {
-        update_mtx.lock();
+        /*
+        Put the stage into fine-track.
+
+        Args:
+            None.
+
+        Ret:
+            None.
+
+        Notes:
+            None.
+        */
+
+        std::lock_guard<std::mutex> mut(update_mtx);
+
         pan_ctrl.update_gains(kp_fine, ki_fine, kd_fine);
         pan_ctrl.reset();
         tilt_ctrl.update_gains(kp_fine, ki_fine, kd_fine);
         tilt_ctrl.reset();
         fine_active = true;
-        update_mtx.unlock();
+
+        return;
     }
 
     void deactivate_fine() {
-        update_mtx.lock();
+        /*
+        Put the stage into coarse-track.
+
+        Args:
+            None.
+
+        Ret:
+            None.
+
+        Notes:
+            None.
+        */
+
+        std::lock_guard<std::mutex> mut(update_mtx);
+
         pan_ctrl.update_gains(kp_coarse, ki_coarse, kd_coarse);
         pan_ctrl.reset();
         tilt_ctrl.update_gains(kp_coarse, ki_coarse, kd_coarse);
         tilt_ctrl.reset();
         fine_active = false;
-        update_mtx.unlock();
+
+        return;
     }
 
 
