@@ -305,6 +305,9 @@ class Registry {
           for (auto ID : rmIds)
                deRegister(ID);
 
+          // Associate the cameras to targets.
+          associate();
+
           return;
      }
 
@@ -385,8 +388,6 @@ class Registry {
                None
           */
 
-          std::lock_guard<std::mutex> mut(lock);
-
           // Add the target and increment the ID counter.
           targets[nextID] = centroid;
           numFramesLost[nextID] = 0;
@@ -407,8 +408,6 @@ class Registry {
           Ret:
                None
           */
-
-          std::lock_guard<std::mutex> mut(lock);
 
           // Remove the ID from target listing.
           numFramesLost.erase(ID);
@@ -432,17 +431,18 @@ class Registry {
              None.
 
          Ret:
-            None.
+             None.
 
          Notes:
              None.
          */
 
-         std::lock_guard<std::mutex> mut(lock);
-
          for (int id {0}; id < num_stages; ++id) {
-             if (cameraTargets.contains(id) != -1)
+             if (cameraTargets[id] != -1)
                  continue;
+
+             if (unassignedTargets.empty())
+                 break;
 
              // Assign camera.
              cameraTargets[id] = *unassignedTargets.begin();
@@ -675,13 +675,28 @@ arma::mat get_dbscan_positions(const arma::mat &positions_mat, double eps) {
 
 
 arma::mat run_tracker(std::vector<double> events, double dt, DBSCAN_KNN T, bool enable_tracking) {
+    /*
+    Run clustering algorithms on the event stream to locate possible targets of interest.
+
+    Args:
+        events: Measured events.
+        dt:     Event integration time.
+        T:      Tracking algorithm based on DBSCAN and nearest-neighbors.
+        enable_tracking: Enable/disable clustering-based tracking.
+
+    Ret:
+        Arma matrix of possible target positions.
+
+    Notes:
+        None.
+    */
 
     std::vector<double> positions;
     if (!enable_tracking || events.empty()) {
         return positions_vector_to_matrix(positions);
     }
 
-    double *mem {events.data()};
+    double * mem {events.data()};
     double t0 {events[0]};
 
     int nEvents {(int) events.size() / 4};
@@ -1049,20 +1064,21 @@ StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit 
     std::vector<int> tilts {prev_tilts};
 
     // Assign cameras to targets.
-    for (int n {0}; n < N; ++n)
+    for (int n {0}; n < N; ++n) {
         if (proc_init.enable_stage[n] && reg->cameraTargets[n] != -1) {
             Eigen::MatrixXd target_position {reg->targets[reg->cameraTargets[n]]};
+
             // Go straight down the list.
             double x { target_position(0, 0) - ((double) proc_init.Nx / 2) };
-            double y { ((double) proc_init.Ny / 2) - positions(1, 0) };
+            double y { ((double) proc_init.Ny / 2) - target_position(1, 0) };
     
-           double theta { get_theta(y, proc_init.Ny, proc_init.hfovy) };
-           double phi { get_phi(x, proc_init.Nx, proc_init.hfovx) };
+            double theta { get_theta(y, proc_init.Ny, proc_init.hfovy) };
+            double phi { get_phi(x, proc_init.Nx, proc_init.hfovx) };
 
-           double theta_prime {
-                get_theta_prime(
-                    phi, theta, proc_init.offset_x[n], proc_init.offset_y[n], proc_init.offset_z[n], proc_init.r_center[n], proc_init.arm[n]
-                )
+            double theta_prime {
+                 get_theta_prime(
+                     phi, theta, proc_init.offset_x[n], proc_init.offset_y[n], proc_init.offset_z[n], proc_init.r_center[n], proc_init.arm[n]
+                 )
             };
 
             double phi_prime {
@@ -1085,6 +1101,7 @@ StageInfo move_stage(std::vector<StageController *>& ctrl, const ProcessingInit 
             ctrl[n]->update_setpoints(pan_position + proc_init.pan_offset[n], tilt_position + proc_init.tilt_offset[n]);
             pans[n] = pan_position;
             tilts[n] = tilt_position;
+        }
     }
 
     StageInfo info(pans, tilts);

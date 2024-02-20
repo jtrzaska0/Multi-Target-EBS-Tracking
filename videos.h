@@ -49,6 +49,11 @@ void createVideoFromImages(const std::string& directoryPath, const std::string& 
     // Sort the image paths based on filenames
     std::sort(imagePaths.begin(), imagePaths.end());
 
+    if (imagePaths.empty()) {
+        std::cerr << "Failed to create " << outputVideoPath << ". No images found.\n";
+        return;
+    }
+
     // Create a VideoWriter object to write the video
     cv::Size frameSize;
     cv::Mat frame = cv::imread(imagePaths[0], cv::IMREAD_COLOR);

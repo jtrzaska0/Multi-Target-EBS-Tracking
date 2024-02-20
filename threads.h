@@ -80,7 +80,7 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
                  std::chrono::time_point<std::chrono::high_resolution_clock> start, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
-    std::ofstream rateFile(file + "-rates.csv");
+    std::ofstream rateFile(file + "-rates.csv" , std::ios::trunc);
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
     shutdownAction.sa_flags = 0;
@@ -108,7 +108,7 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
     auto xplorer_info = handle.infoGet();
 
     std::cerr << xplorer_info.deviceString << " --- ID: " <<  xplorer_info.deviceID << 
-                ",  Master: " << xplorer_info.deviceIsMaster << 
+                ", Master: " << xplorer_info.deviceIsMaster << 
                 ", DVS X: "   << xplorer_info.dvsSizeX << 
                 ", DVS Y: "   << xplorer_info.dvsSizeY << 
                 ", Logic: "   << xplorer_info.logicVersion << 
@@ -153,7 +153,7 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
     // Let's turn on blocking data-get mode to avoid wasting resources.
     handle.configSet(CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
     std::cerr << "Enabled blocking data-get mode for with the DVXplorer.\n";
-    std::cerr << "EBS: active = " << active << "\n";
+    std::cerr << "EBS: active = " << (active ? "True" : "False") << "\n";
 
     while (!globalShutdown.load(std::memory_order_relaxed) && active) {
         if (debug)
@@ -210,7 +210,7 @@ int read_xplorer(Buffers &buffers, const bool debug, const json &noise_params, b
     rateFile.close();
 
     // Close automatically done by destructor.
-    std::cerr << "Shutdown successful.\n";
+    std::cerr << "DVXplorer: Shutdown successful.\n";
 
     return (EXIT_SUCCESS);
 }
@@ -220,7 +220,7 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
                std::chrono::time_point<std::chrono::high_resolution_clock> start, bool &active) {
     // Install signal handler for global shutdown.
     struct sigaction shutdownAction{};
-    std::ofstream rateFile(file + "-rates.csv");
+    std::ofstream rateFile(file + "-rates.csv", std::ios::trunc);
 
     shutdownAction.sa_handler = &globalShutdownSignalHandler;
     shutdownAction.sa_flags = 0;
@@ -246,9 +246,12 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
     // Let's take a look at the information we have on the device.
     struct caer_davis_info davis_info = davisHandle.infoGet();
 
-    //printf("%s --- ID: %d, Master: %d, DVS X: %d, DVS Y: %d, Logic: %d.\n", davis_info.deviceString,
-           //davis_info.deviceID, davis_info.deviceIsMaster, davis_info.dvsSizeX, davis_info.dvsSizeY,
-           //davis_info.logicVersion);
+    std::cerr << davis_info.deviceString << " --- ID: " <<  davis_info.deviceID << 
+                ", Master: " << davis_info.deviceIsMaster << 
+                ", DVS X: "   << davis_info.dvsSizeX << 
+                ", DVS Y: "   << davis_info.dvsSizeY << 
+                ", Logic: "   << davis_info.logicVersion << 
+                ".\n"; 
 
     // Send the default configuration before using the device.
     // No configuration is sent automatically!
@@ -362,7 +365,7 @@ int read_davis(Buffers &buffers, const bool debug, const json &noise_params, boo
     davisHandle.dataStop();
 
     // Close automatically done by destructor.
-    std::cerr << "Shutdown successful.\n";
+    std::cerr << "DAVIS346: Shutdown successful.\n";
 
     return (EXIT_SUCCESS);
 }
@@ -401,8 +404,7 @@ void processing_threads(std::vector<StageController *>& ctrl, Buffers& buffers, 
     StageInfo prev_stageInfo(panInit, tiltInit);
 
     // Keep a registry of active targets.
-    std::mutex reg_lock;
-    Registry registry(100, 40);
+    Registry registry(100, 150);
 
     // Launch the user thread. This section handles dynamic user input.
     std::thread user_input(
@@ -411,18 +413,19 @@ void processing_threads(std::vector<StageController *>& ctrl, Buffers& buffers, 
         std::ref(dnn_enable), 
         std::ref(proc_init),
         std::ref(ctrl), 
-        &registry);
+        &registry
+    );
 
     // Launch the processing loops.
     while (active) {
         if (debug)
-            ;//printf("Started event processing.");
+            std::cerr << "Started event processing.\n";
 
         if (buffers.PacketQueue.empty())
             continue;
 
         std::future<WindowInfo> fut_resultA = std::async(
-            std::launch::async, process_packet, buffers.PacketQueue.front(), T, proc_init,
+            std::launch::async, process_packet, buffers.PacketQueue.front(), std::ref(T), proc_init,
             prev_trackingInfo, std::ref(buffers.prev_positions), &update_positions, start, &registry
         );
 
@@ -432,7 +435,7 @@ void processing_threads(std::vector<StageController *>& ctrl, Buffers& buffers, 
                 read_future(ctrl, fut_resultA, proc_init, prev_stageInfo, detectionsFile, eventFile, start, &registry);
 
         if (debug)
-            ;//printf("Completed event processing.");
+            std::cerr << "Completed event processing.\n";
     }
 
     user_input.join();
@@ -499,7 +502,7 @@ void camera_thread(StageCam * cam, StageController * ctrl, int height, int width
 
     while(active && cam->running()) {
         if (debug)
-            ;//printf("Started camera acquisition.");
+            std::cerr << "Started camera acquisition.";
 
         auto frame = cam->get_frame();
         cv::Mat color_frame;
@@ -646,24 +649,26 @@ void camera_thread(StageCam * cam, StageController * ctrl, int height, int width
         cv::imshow("Camera" + std::to_string(idx), color_frame);
 
         if (debug)
-            ;//printf("Completed camera acquisition.");
+            std::cerr << "Completed camera acquisition.";
     }
 
     return;
 }
 
 
-void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable, 
-    const ProcessingInit& procInit, std::vector<StageController *>& stages,
-    Registry * reg) {
+void userControl(bool& active, std::vector<std::atomic<bool>>& dnn_enable, const ProcessingInit& procInit, 
+    std::vector<StageController *>& stages, Registry * reg) {
     /*
-    Creates a console allowing the user to dynamically adjust target selection
-    and track mode for nfov cameras and to kill the program.
+    Run a console application that allows the user to dynamically adjust target selection, move FBS between
+    fine- and coarse-tracking modes, and to kill the program.
 
     Args:
         active:     This flag specificies the state of the program: runnning (true) or not (false).
                     End the program if false.
-        dnn_enable: Tells the 
+        dnn_enable: Set whether a FBS uses YOLO to detect drones.
+        procInit:   Globally important program parameters.
+        stages:     StageControllers for each of the connect stages.
+        Registry:   Tallies existing targets.
 
     Ret:
         None.

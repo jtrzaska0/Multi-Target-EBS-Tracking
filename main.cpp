@@ -471,13 +471,20 @@ int main(int argc, char ** argv) {
 
     // Stop video streaming and save movies.
     cv::destroyAllWindows();
-    std::cerr << "Processing event video..\n";
-    for (int n {0}; n < num_stages; ++n)
-        createVideoFromImages("./event_images", "ebs_output.mp4", video_fps[n]);
+    bool ebs_video {false};
+    bool fbs_video {false};
 
-    std::cerr << "Processing camera videos.\n";
-    for (int n {0}; n < num_stages; ++n)
-        createVideoFromImages("./camera" + std::to_string(n) + "_images", "camera" + std::to_string(n) + "_output.mp4", video_fps[n]);
+    if (ebs_video) {
+        std::cerr << "Processing event video..\n";
+        for (int n {0}; n < num_stages; ++n)
+            createVideoFromImages("./event_images", "ebs_output.mp4", video_fps[n]);
+    }
+
+    if (fbs_video) {
+        std::cerr << "Processing camera videos.\n";
+        for (int n {0}; n < num_stages; ++n)
+            createVideoFromImages("./camera" + std::to_string(n) + "_images", "camera" + std::to_string(n) + "_output.mp4", video_fps[n]);
+    }
 
     return ret;
 }

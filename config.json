@@ -1,6 +1,6 @@
 {
   "PROGRAM_PARAMETERS": {
-    "DEVICE_TYPE": "xplorer",
+    "DEVICE_TYPE": "davis",
     "INTEGRATION_TIME_MS": 2.5,
     "ENABLE_TRACKING": true,
     "COMMAND_METHOD": "dbscan",
@@ -50,8 +50,8 @@
         "0": false
     },
 
-    "EBS_EPSILON": 12,
-    "EBS_NUM_PTS": 75,
+    "EBS_EPSILON": 16,
+    "EBS_NUM_PTS": 40,
     "EBS_TAU": 1.2,
     "NUM_STAGES": 1,
     "VERBOSE": false,
