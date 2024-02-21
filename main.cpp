@@ -471,8 +471,8 @@ int main(int argc, char ** argv) {
 
     // Stop video streaming and save movies.
     cv::destroyAllWindows();
-    bool ebs_video {false};
-    bool fbs_video {false};
+    bool ebs_video {true};
+    bool fbs_video {true};
 
     if (ebs_video) {
         std::cerr << "Processing event video..\n";

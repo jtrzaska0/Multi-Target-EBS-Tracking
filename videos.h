@@ -63,6 +63,7 @@ void createVideoFromImages(const std::string& directoryPath, const std::string& 
         std::cerr << "Failed to read the first image." << std::endl;
         return;
     }
+
     const auto [first_time, last_time] = getMinMaxTimes(imagePaths);
     if (first_time < 0 || last_time < 0)
         return;
@@ -97,6 +98,7 @@ void createVideoFromImages(const std::string& directoryPath, const std::string& 
                 std::cerr << "Failed to read image: " << closestImagePath << std::endl;
             }
         }
+
         bar.update();
         elapsed_time += ms_per_frame;
     }
