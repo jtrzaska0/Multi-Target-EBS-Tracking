@@ -1,6 +1,6 @@
 // File         controller.h
 // Summary      Class for controlling the FLIR stage.
-// Authors      Trevor Schlackt, Jacob Trzaska
+// Authors      Trevor Schlack, Jacob Trzaska
 # pragma once
 
 // Standard imports

@@ -1,6 +1,6 @@
 // File     utils.h
 // Summary  Utility function for data passing and display.
-// Authors  Trevor Schlackt, Jacob Trzaska
+// Authors  Trevor Schlack, Jacob Trzaska
 # pragma once
 
 // Standard imports

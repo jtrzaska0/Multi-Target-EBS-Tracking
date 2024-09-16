@@ -1,6 +1,6 @@
 // File     main.cpp
 // Summary  Read in program configuration and start up the tracking loops.
-// Authors  Trevor Schlackt, Jacob Trzaska
+// Authors  Trevor Schlack, Jacob Trzaska
 
 # include <filesystem>
 # include <vector>

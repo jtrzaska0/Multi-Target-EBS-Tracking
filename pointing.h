@@ -1,6 +1,6 @@
 // File     pointing.h
 // Summary  Miscellaneous functions.
-// Author   Trevor Schlackt, Jacob Trzaska
+// Author   Trevor Schlack, Jacob Trzaska
 # pragma once
 
 # include <iostream>
