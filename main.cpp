@@ -108,8 +108,8 @@ int main(int argc, char ** argv) {
     */
 
     // We'll use ncurses to control program behavior. This requires
-    // keeping controlling writes to stdout, which is partially
-    // accomplished by redirecting standard error.
+    // controlling writes to stdout, which is partially
+    // accomplished by redirecting stderr.
     std::ofstream err("err.log", std::ios::trunc | std::ios::out);
     if (!err.good()) {
         std::cout << "Could not create log file.\n";

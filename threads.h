@@ -390,8 +390,8 @@ void processing_threads(std::vector<StageController *>& ctrl, Buffers& buffers, 
         None.
 
     Notes:
-        Jacob - I've swapped the triple-thread architechure for a single thread. The hope is
-        that our new laptop has the performance to keep up with the event stream.
+        Jacob - I've swapped the triple-thread architechure for a single thread. 
+        Our new laptop has enough performance to keep up with the event stream.
     */
 
     std::ofstream detectionsFile(proc_init.event_file + "-detections.csv");
